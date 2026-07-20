@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Brand Launch Editable Demo</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #181614;
+        --paper: #fffaf0;
+        --mint: #83d6b8;
+        --blue: #1d4f91;
+        --red: #d94a38;
+        --line: rgba(24, 22, 20, 0.18);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          linear-gradient(90deg, var(--line) 1px, transparent 1px),
+          linear-gradient(var(--line) 1px, transparent 1px),
+          var(--paper);
+        background-size: 34px 34px;
+        color: var(--ink);
+        font-family: "Trebuchet MS", Verdana, sans-serif;
+      }
+
+      main {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 0.96fr 1.04fr;
+        overflow: hidden;
+      }
+
+      .panel {
+        padding: 7vw 6vw;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 24px;
+      }
+
+      .label {
+        width: fit-content;
+        padding: 9px 13px;
+        border: 2px solid var(--ink);
+        background: var(--mint);
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        box-shadow: 5px 5px 0 var(--ink);
+      }
+
+      h1 {
+        max-width: 720px;
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 82px;
+        line-height: 0.94;
+        letter-spacing: 0;
+      }
+
+      .summary {
+        max-width: 590px;
+        margin: 0;
+        color: #3f3a34;
+        font-size: 22px;
+        line-height: 1.45;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .button {
+        display: inline-flex;
+        padding: 15px 22px;
+        border: 2px solid var(--ink);
+        background: var(--red);
+        color: #fffaf0;
+        font-weight: 900;
+        text-decoration: none;
+        box-shadow: 6px 6px 0 var(--ink);
+      }
+
+      .microcopy {
+        margin: 0;
+        color: var(--blue);
+        font-size: 15px;
+        font-weight: 900;
+      }
+
+      .stage {
+        min-height: 100vh;
+        position: relative;
+        padding: 40px;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at 68% 28%, rgba(217, 74, 56, 0.34) 0 19%, transparent 20%),
+          radial-gradient(circle at 30% 72%, rgba(131, 214, 184, 0.7) 0 21%, transparent 22%),
+          #f7df70;
+      }
+
+      .ticket {
+        width: min(430px, 82vw);
+        min-height: 510px;
+        padding: 34px;
+        border: 3px solid var(--ink);
+        background: #fffaf0;
+        box-shadow: 18px 18px 0 var(--blue);
+        transform: rotate(-4deg);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 28px;
+      }
+
+      .ticket-top {
+        display: grid;
+        gap: 12px;
+      }
+
+      .ticket-kicker {
+        margin: 0;
+        color: var(--red);
+        font-size: 14px;
+        font-weight: 900;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .ticket-title {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 54px;
+        line-height: 0.95;
+      }
+
+      .ticket-note {
+        margin: 0;
+        border-top: 2px dashed var(--ink);
+        padding-top: 20px;
+        font-size: 18px;
+        line-height: 1.45;
+        font-weight: 800;
+      }
+
+      .badge {
+        position: absolute;
+        right: 7vw;
+        bottom: 7vw;
+        width: 118px;
+        height: 118px;
+        border: 3px solid var(--ink);
+        border-radius: 999px;
+        background: var(--mint);
+        display: grid;
+        place-items: center;
+        color: var(--ink);
+        font-size: 24px;
+        font-weight: 900;
+        box-shadow: 8px 8px 0 var(--ink);
+      }
+
+      @media (max-width: 860px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+
+        h1 {
+          font-size: 54px;
+        }
+
+        .stage {
+          min-height: 560px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel">
+        <div id="campaign-label" class="label">New collection</div>
+        <h1 id="campaign-title">Make launch copy editable in seconds.</h1>
+        <p id="campaign-summary" class="summary">
+          Select any text block, rewrite the message, adjust the size, then nudge it into place.
+        </p>
+        <div class="actions">
+          <a id="campaign-cta" class="button" href="#">Open studio</a>
+          <p id="campaign-microcopy" class="microcopy">Local HTML, no build step.</p>
+        </div>
+      </section>
+
+      <section class="stage">
+        <article class="ticket">
+          <div class="ticket-top">
+            <p id="ticket-kicker" class="ticket-kicker">Editable card</p>
+            <p id="ticket-title" class="ticket-title">Summer Drop</p>
+          </div>
+          <p id="ticket-note" class="ticket-note">
+            This sample is built from plain HTML and CSS so the editor can save changes directly.
+          </p>
+        </article>
+        <div id="launch-badge" class="badge">07.18</div>
+      </section>
+    </main>
+  </body>
+</html>

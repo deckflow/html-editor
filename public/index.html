@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local HTML Editor</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="kicker">Local HTML Editor</p>
+          <h1>HTML text editor</h1>
+        </div>
+        <div class="file-row">
+          <button id="chooseFileBtn" class="file-picker-button" type="button">Choose HTML</button>
+          <input id="htmlFileInput" type="file" accept=".html" hidden />
+          <input
+            id="filePath"
+            value=""
+            placeholder="index.html or https://example.com"
+            aria-label="HTML file path or remote URL"
+          />
+          <button id="saveBtn" class="primary" type="button">Save</button>
+        </div>
+      </header>
+
+      <section class="workspace" aria-label="Editor workspace">
+        <div class="preview-pane">
+          <div class="preview-toolbar">
+            <span id="status">Loading project...</span>
+            <button id="reloadBtn" type="button">Reload</button>
+          </div>
+          <iframe id="preview" title="Editable HTML preview" sandbox="allow-same-origin"></iframe>
+        </div>
+
+        <aside class="inspector" aria-label="Selected element inspector" hidden>
+          <section class="selection">
+            <p class="section-label">Selection</p>
+            <div id="selectionName" class="selection-name">No element selected</div>
+            <code id="selectorText">Click text in the preview</code>
+          </section>
+
+          <section class="control-group">
+            <label for="textValue">Text</label>
+            <textarea id="textValue" rows="7" disabled></textarea>
+          </section>
+
+          <section class="control-group">
+            <label for="fontSize">Font size</label>
+            <div class="inline-controls">
+              <input id="fontSize" type="range" min="8" max="140" value="16" disabled />
+              <input id="fontSizeNumber" type="number" min="8" max="140" value="16" disabled />
+              <span>px</span>
+            </div>
+          </section>
+
+          <section class="control-group">
+            <label for="textColor">Text color</label>
+            <div class="color-control">
+              <input id="textColor" type="color" value="#15181d" disabled />
+              <output id="textColorValue" for="textColor">#15181d</output>
+            </div>
+          </section>
+
+          <section class="control-group">
+            <span class="field-label">Position</span>
+            <div class="grid-controls">
+              <label>
+                X
+                <input id="posX" type="number" value="0" disabled />
+              </label>
+              <label>
+                Y
+                <input id="posY" type="number" value="0" disabled />
+              </label>
+            </div>
+            <div class="nudge-grid" aria-label="Nudge selected element">
+              <span></span>
+              <button data-nudge="0,-1" type="button" disabled>Up</button>
+              <span></span>
+              <button data-nudge="-1,0" type="button" disabled>Left</button>
+              <button data-nudge="0,1" type="button" disabled>Down</button>
+              <button data-nudge="1,0" type="button" disabled>Right</button>
+            </div>
+          </section>
+
+          <section class="control-group">
+            <button id="clearBtn" type="button" disabled>Clear selection</button>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js?v=snap-guides-v1"></script>
+  </body>
+</html>

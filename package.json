@@ -1,0 +1,42 @@
+{
+  "name": "local-html-editor",
+  "version": "0.1.0",
+  "description": "Run a local visual editor for HTML files",
+  "type": "module",
+  "bin": {
+    "local-html-editor": "./bin/local-html-editor.js"
+  },
+  "exports": {
+    ".": "./server.js",
+    "./html-patch": "./htmlPatch.js"
+  },
+  "files": [
+    "bin",
+    "cli.js",
+    "htmlPatch.js",
+    "projectContext.js",
+    "public",
+    "server.js",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "node ./bin/local-html-editor.js ./samples/demo.html --port 4177 --no-open",
+    "start": "node ./bin/local-html-editor.js",
+    "test": "node --test",
+    "pack:check": "npm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=18.18"
+  },
+  "keywords": [
+    "html",
+    "editor",
+    "visual-editor",
+    "local-first"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "css-select": "^6.0.0",
+    "htmlparser2": "^10.1.0"
+  }
+}

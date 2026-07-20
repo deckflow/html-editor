@@ -1,0 +1,5 @@
+.backups/
+.local-html-editor/
+*.tgz
+node_modules/
+.DS_Store
