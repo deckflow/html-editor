@@ -66,3 +66,28 @@ test("a later group snapshots the updated text fingerprint", () => {
   assert.equal(patches[1].target.originalText, "New");
   assert.equal(patches[2].target.originalText, "New");
 });
+
+test("repeated text-node edits keep the source value and latest preview value", () => {
+  const patches = [];
+  const target = { id: "footer", originalText: "Before" };
+  queue.appendStylePatch(patches, target, {
+    type: "text-node-content",
+    nodePath: [0],
+    originalValue: "Before",
+    value: "Middle",
+  });
+  queue.appendStylePatch(patches, { ...target, originalText: "Middle" }, {
+    type: "text-node-content",
+    nodePath: [0],
+    originalValue: "Middle",
+    value: "After",
+  });
+
+  assert.equal(patches.length, 1);
+  assert.deepEqual(patches[0].operations, [{
+    type: "text-node-content",
+    nodePath: [0],
+    originalValue: "Before",
+    value: "After",
+  }]);
+});

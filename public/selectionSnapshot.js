@@ -1,3 +1,5 @@
+import { collectEditableTextFields } from "./textFieldModel.js";
+
 export const TEXT_STYLE_PROPERTIES = [
   "color",
   "font-family",
@@ -39,17 +41,6 @@ function readComputedStyles(element) {
   );
 }
 
-const safeInlineTextTags = new Set([
-  "span", "strong", "b", "em", "i", "u", "s", "small", "code", "kbd", "samp",
-  "var", "mark", "sub", "sup", "time", "abbr", "cite", "q",
-]);
-
-function isSafeInlineTextElement(element) {
-  const tagName = String(element?.tagName || "").toLowerCase();
-  if (!safeInlineTextTags.has(tagName)) return false;
-  return Array.from(element.children || []).every(isSafeInlineTextElement);
-}
-
 function fieldForElement(element, index, source) {
   const tagName = String(element.tagName || "span").toLowerCase();
   return {
@@ -63,32 +54,21 @@ function fieldForElement(element, index, source) {
 }
 
 export function collectTextFields(element) {
-  if (!element?.textContent?.trim()) return [];
-  const children = Array.from(element.children || []);
-  if (children.length === 0) return [fieldForElement(element, 0, "self")];
-  if (!children.every(isSafeInlineTextElement)) return [];
-
-  const fields = [];
-  let index = 0;
-  for (const node of Array.from(element.childNodes || [])) {
-    if (node.nodeType === 3 && node.textContent?.trim()) {
-      fields.push({
-        key: `text-node:${index}`,
-        value: node.textContent,
-        tagName: "#text",
-        source: "text-node",
-        inlineStyles: {},
-        computedStyles: {},
-      });
-      index += 1;
-      continue;
+  return collectEditableTextFields(element).map((field, index) => {
+    if (field.source === "text-node") {
+      return { ...field, inlineStyles: {}, computedStyles: {} };
     }
-    if (node.nodeType === 1 && isSafeInlineTextElement(node)) {
-      fields.push(fieldForElement(node, index, "child"));
-      index += 1;
-    }
-  }
-  return fields;
+    const fieldElement = field.nodePath.slice(0, -1).reduce(
+      (current, childIndex) => current?.childNodes?.[childIndex],
+      element,
+    );
+    return {
+      ...fieldForElement(fieldElement?.nodeType === 1 ? fieldElement : element, index, field.source),
+      key: field.key,
+      nodePath: field.nodePath,
+      value: field.value,
+    };
+  });
 }
 
 export function createSelectionKey(path, target = {}) {

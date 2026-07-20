@@ -35,6 +35,10 @@ const safeInlineHtmlTags = new Set([
   "var", "mark", "sub", "sup", "time", "abbr", "cite", "q",
 ]);
 
+const unsafePreservedHtmlTags = new Set([
+  "script", "style", "template", "noscript", "iframe", "object", "embed", "svg", "canvas",
+]);
+
 function isElementNode(node) {
   return node?.type === "tag" || node?.type === "script" || node?.type === "style";
 }
@@ -200,6 +204,67 @@ function sanitizeInlineHtml(value) {
   return sanitizeNodes(fragment.children);
 }
 
+function isEditorTextSpan(node) {
+  return node?.name === "span" && typeof node.attribs?.["data-local-text-key"] === "string";
+}
+
+function validateEditorTextSpan(node) {
+  const attributes = Object.keys(node.attribs || {});
+  if (attributes.some((name) => !["style", "data-local-text-key"].includes(name.toLowerCase()))) {
+    return false;
+  }
+  for (const declaration of parseStyle(node.attribs?.style || "")) {
+    const property = declaration.property.toLowerCase();
+    if (!inlineTextStyleProperties.has(property)
+      || !isSafeInlineStyleValue(property, declaration.value)) return false;
+  }
+  return true;
+}
+
+function structureTokens(nodes) {
+  const tokens = [];
+
+  function pushText() {
+    if (tokens[tokens.length - 1] !== "#text") tokens.push("#text");
+  }
+
+  function visit(node) {
+    if (node.type === "text") {
+      pushText();
+      return true;
+    }
+    if (node.type === "comment") {
+      tokens.push(`#comment:${node.data || ""}`);
+      return true;
+    }
+    if (!isElementNode(node) || unsafePreservedHtmlTags.has(node.name)) return false;
+    if (isEditorTextSpan(node)) {
+      if (!validateEditorTextSpan(node)) return false;
+      return (node.children || []).every(visit);
+    }
+    const attributes = Object.entries(node.attribs || {})
+      .map(([name, attributeValue]) => [name.toLowerCase(), attributeValue])
+      .sort(([left], [right]) => left.localeCompare(right));
+    tokens.push(`<${node.name}:${JSON.stringify(attributes)}>`);
+    if (!(node.children || []).every(visit)) return false;
+    tokens.push(`</${node.name}>`);
+    return true;
+  }
+
+  return (nodes || []).every(visit) ? tokens : null;
+}
+
+// 对任意作者 HTML，只允许保留原有标签/属性并新增受控文字 span。把编辑器
+// span 视作透明节点后，结构 token 必须与源码完全一致，链接和自定义元素不会丢失。
+function preserveStructuredInlineHtml(sourceNode, value) {
+  const proposed = parseDocument(String(value || ""), { decodeEntities: true });
+  const sourceTokens = structureTokens(sourceNode.children);
+  const proposedTokens = structureTokens(proposed.children);
+  if (!sourceTokens || !proposedTokens
+    || JSON.stringify(sourceTokens) !== JSON.stringify(proposedTokens)) return null;
+  return String(value || "");
+}
+
 function parseStyle(styleText) {
   const declarations = [];
   for (const rawPart of String(styleText || "").split(";")) {
@@ -332,7 +397,7 @@ function patchTextContent(elementHtml, node, value) {
 }
 
 function patchInnerHtml(elementHtml, node, value) {
-  const safeHtml = sanitizeInlineHtml(value);
+  const safeHtml = sanitizeInlineHtml(value) ?? preserveStructuredInlineHtml(node, value);
   if (safeHtml == null) return null;
   const openEnd = findOpenTagEnd(elementHtml);
   const closeStart = findClosingTagStart(elementHtml, node.name);
@@ -340,10 +405,56 @@ function patchInnerHtml(elementHtml, node, value) {
   return `${elementHtml.slice(0, openEnd + 1)}${safeHtml}${elementHtml.slice(closeStart)}`;
 }
 
-function patchElementHtml(elementHtml, node, operations) {
+function resolveNodePath(root, nodePath) {
+  if (!Array.isArray(nodePath) || nodePath.some((index) => !Number.isInteger(index) || index < 0)) {
+    return null;
+  }
+  let current = root;
+  for (const index of nodePath) {
+    current = current?.children?.[index];
+    if (!current) return null;
+  }
+  return current;
+}
+
+function patchTextNodes(elementHtml, root, operations) {
+  const replacements = [];
+  for (const operation of operations) {
+    const textNode = resolveNodePath(root, operation.nodePath);
+    if (textNode?.type !== "text" || !Number.isInteger(textNode.startIndex)
+      || !Number.isInteger(textNode.endIndex)) return null;
+    if (typeof operation.originalValue === "string" && textNode.data !== operation.originalValue) {
+      return null;
+    }
+    const start = textNode.startIndex - root.startIndex;
+    const end = textNode.endIndex - root.startIndex + 1;
+    if (start < 0 || end < start || end > elementHtml.length) return null;
+    replacements.push({ start, end, value: escapeText(operation.value ?? "") });
+  }
+
+  replacements.sort((left, right) => right.start - left.start);
   let next = elementHtml;
+  let previousStart = elementHtml.length;
+  for (const replacement of replacements) {
+    if (replacement.end > previousStart) return null;
+    next = `${next.slice(0, replacement.start)}${replacement.value}${next.slice(replacement.end)}`;
+    previousStart = replacement.start;
+  }
+  return next;
+}
+
+function patchElementHtml(elementHtml, node, operations) {
+  const textNodeOperations = operations.filter((operation) => operation.type === "text-node-content");
+  if (textNodeOperations.length > 0
+    && operations.some((operation) => ["text-content", "inner-html", "duplicate-element", "delete-element"]
+      .includes(operation.type))) return null;
+  let next = textNodeOperations.length > 0
+    ? patchTextNodes(elementHtml, node, textNodeOperations)
+    : elementHtml;
+  if (next == null) return null;
 
   for (const [index, operation] of operations.entries()) {
+    if (operation.type === "text-node-content") continue;
     if (operation.type === "text-content") {
       const patched = patchTextContent(next, node, operation.value);
       if (patched == null) return null;

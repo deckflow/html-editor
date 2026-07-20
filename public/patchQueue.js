@@ -8,6 +8,9 @@ function snapshotTarget(target) {
 }
 
 function operationKey(operation) {
+  if (operation.type === "text-node-content") {
+    return `${operation.type}:${JSON.stringify(operation.nodePath || [])}`;
+  }
   return `${operation.type}:${operation.property || ""}`;
 }
 
@@ -24,7 +27,12 @@ export function appendStylePatch(patches, target, operation) {
   const existingIndex = patch.operations.findIndex(
     (item) => operationKey(item) === keyForOperation,
   );
-  if (existingIndex >= 0) patch.operations[existingIndex] = operation;
+  if (existingIndex >= 0) {
+    const existing = patch.operations[existingIndex];
+    patch.operations[existingIndex] = operation.type === "text-node-content"
+      ? { ...operation, originalValue: existing.originalValue }
+      : operation;
+  }
   else patch.operations.push(operation);
   return patch;
 }

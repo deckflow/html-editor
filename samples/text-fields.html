@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Text field capability sample</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 64px;
+        font: 18px/1.6 system-ui, sans-serif;
+        color: #17191c;
+        background: #f7f6f2;
+      }
+
+      main {
+        display: grid;
+        gap: 28px;
+        max-width: 760px;
+      }
+
+      button,
+      deckflow-action {
+        width: fit-content;
+        border: 1px solid #17191c;
+        padding: 10px 16px;
+        background: white;
+      }
+
+      deckflow-action {
+        display: block;
+      }
+
+      footer {
+        border-top: 1px solid #bbb8b0;
+        padding-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <button id="plain-button" type="button">Button text</button>
+      <deckflow-action id="custom-element">Custom element text</deckflow-action>
+      <footer id="mixed-footer">
+        参考资料：
+        <a href="https://github.com/deckflow/html-editor">HTML Editor</a>，
+        <a href="https://github.com/heygen-com/hyperframes">HyperFrames</a>。
+      </footer>
+    </main>
+  </body>
+</html>

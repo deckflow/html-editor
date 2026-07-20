@@ -219,19 +219,90 @@ export function applyRangeStylesAsTextFields(element, range, changes) {
   if (!element || !range || range.collapsed) return null;
   if (!element.contains(range.commonAncestorContainer)) return null;
 
-  // Range 只提供本次用户意图；DOM 重建后立即创建新 Range，旧引用不进入状态或历史。
-  const fields = collectFormattingTextFields(element);
   const start = rangeOffset(element, range.startContainer, range.startOffset);
   const end = rangeOffset(element, range.endContainer, range.endOffset);
-  const next = splitTextFieldsForStyle(fields, start, end, changes);
-  if (next.selectedKeys.length === 0) return null;
+  const doc = element.ownerDocument;
+  const walker = doc.createTreeWalker(element, doc.defaultView.NodeFilter.SHOW_TEXT);
+  const segments = [];
+  let cursor = 0;
 
-  element.innerHTML = serializeTextFields(next.fields);
-  const nextRange = restoreRange(element, next.selectedKeys);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const value = node.data || "";
+    const nodeStart = cursor;
+    const nodeEnd = cursor + value.length;
+    cursor = nodeEnd;
+    const overlapStart = Math.max(start, nodeStart);
+    const overlapEnd = Math.min(end, nodeEnd);
+    if (overlapStart >= overlapEnd) continue;
+    let ancestor = node.parentElement;
+    let excluded = false;
+    while (ancestor && ancestor !== element) {
+      if (isExcludedTextElement(ancestor)) {
+        excluded = true;
+        break;
+      }
+      ancestor = ancestor.parentElement;
+    }
+    if (excluded) continue;
+    segments.push({
+      node,
+      start: overlapStart - nodeStart,
+      end: overlapEnd - nodeStart,
+    });
+  }
+
+  if (segments.length === 0) return null;
+  const selectedKeys = [];
+  // 从文档末尾开始拆分，前面的 Range 偏移不会被后面的 DOM 修改影响。
+  for (const segment of segments.reverse()) {
+    const value = segment.node.data;
+    const before = value.slice(0, segment.start);
+    const selected = value.slice(segment.start, segment.end);
+    const after = value.slice(segment.end);
+    const existingField = segment.node.parentElement?.matches?.("span[data-local-text-key]")
+      && segment.node.parentElement.childNodes.length === 1
+      ? segment.node.parentElement
+      : null;
+    const baseStyles = existingField
+      ? readInlineStyles(segment.node, existingField.parentElement || element)
+      : {};
+    const selectedKey = existingField?.getAttribute("data-local-text-key") || nextTextFieldKey();
+    const selectedStyles = stylesWithChanges(baseStyles, changes);
+
+    function createField(valuePart, key, styles) {
+      const span = doc.createElement("span");
+      span.setAttribute("data-local-text-key", key);
+      for (const [property, styleValue] of Object.entries(styles)) {
+        if (INLINE_STYLE_PROPERTIES.has(property) && styleValue !== "") {
+          span.style.setProperty(property, styleValue);
+        }
+      }
+      span.textContent = valuePart;
+      return span;
+    }
+
+    const replacement = doc.createDocumentFragment();
+    if (existingField) {
+      if (before) replacement.append(createField(before, nextTextFieldKey(), baseStyles));
+      replacement.append(createField(selected, selectedKey, selectedStyles));
+      if (after) replacement.append(createField(after, nextTextFieldKey(), baseStyles));
+      existingField.replaceWith(replacement);
+    } else {
+      if (before) replacement.append(doc.createTextNode(before));
+      replacement.append(createField(selected, selectedKey, selectedStyles));
+      if (after) replacement.append(doc.createTextNode(after));
+      segment.node.replaceWith(replacement);
+    }
+    selectedKeys.unshift(selectedKey);
+  }
+
+  const nextRange = restoreRange(element, selectedKeys);
   return {
-    fields: next.fields,
-    selectedKeys: next.selectedKeys,
+    fields: collectFormattingTextFields(element),
+    selectedKeys,
     html: element.innerHTML,
     range: nextRange,
   };
 }
+import { isExcludedTextElement } from "./textFieldModel.js";

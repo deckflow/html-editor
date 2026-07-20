@@ -1,3 +1,9 @@
+import {
+  isEditableMixedTextRoot,
+  isEditableTextRoot,
+  resolveEditableTextTarget,
+} from "./textFieldModel.js";
+
 export function applyInlineEditAttributes(el, { preserveMarkup = false } = {}) {
   el.setAttribute("contenteditable", preserveMarkup ? "true" : "plaintext-only");
   el.setAttribute("spellcheck", "false");
@@ -95,98 +101,6 @@ export function isSimpleTextElement(el) {
   return Boolean(el?.textContent?.trim()) && (el.children?.length || 0) === 0;
 }
 
-// 与 HyperFrames 的 text-bearing capability 类似：先区分“可编辑文字字段”
-// 和 article/section/details 这类结构容器，再由点击节点向上解析真实文字目标。
-// preferred root 可以容纳编辑器生成的安全 span；leaf tags 用于已有语义内联标签。
-const preferredTextRootTags = new Set([
-  "h1", "h2", "h3", "h4", "h5", "h6",
-  "p", "a", "button", "li", "label",
-  "blockquote", "pre", "figcaption", "caption", "dt", "dd", "th", "td",
-  "legend", "output", "summary", "code",
-  "div",
-]);
-
-const safeInlineSemanticTags = new Set([
-  "span", "strong", "b", "em", "i", "u", "s", "small", "code", "kbd", "samp",
-  "var", "mark", "sub", "sup", "time", "abbr", "cite", "q",
-]);
-
-const textBearingLeafTags = new Set([
-  ...preferredTextRootTags,
-  "span", "div", "strong", "b", "em", "i", "u", "s", "small",
-  "kbd", "samp", "var", "mark", "sub", "sup", "time", "abbr", "cite", "q",
-]);
-
-const nonEditableTextTags = new Set([
-  "html", "body", "head", "main", "section", "article", "aside", "nav",
-  "header", "footer", "details", "script", "style", "link", "meta", "template",
-  "img", "video", "audio", "canvas", "svg", "input", "textarea", "select", "option",
-]);
-
-export function isEditableTextRoot(el) {
-  if (!el?.textContent?.trim()) return false;
-  const children = Array.from(el.children || []);
-  if (children.length === 0) return true;
-  return children.every((child) => {
-    if (String(child.tagName || "").toUpperCase() !== "SPAN") return false;
-    const attributeNames = child.getAttributeNames?.() || [];
-    if (attributeNames.some((name) =>
-      !["style", "data-local-text-key"].includes(name.toLowerCase()))) return false;
-    return isEditableTextRoot(child);
-  });
-}
-
-function isSafeInlineSemanticTree(el) {
-  const tagName = String(el?.tagName || "").toLowerCase();
-  if (!safeInlineSemanticTags.has(tagName)) return false;
-  return Array.from(el.children || []).every(isSafeInlineSemanticTree);
-}
-
-// Mixed content 对应 HyperFrames 的多个 textFields：容器必须含直属可见文本，
-// 其余子元素只能是安全的语义内联树，避免把 card/section 误判成一段文字。
-export function isEditableMixedTextRoot(el) {
-  if (!el?.textContent?.trim()) return false;
-  const hasDirectText = Array.from(el.childNodes || []).some(
-    (node) => node.nodeType === 3 && node.textContent?.trim(),
-  );
-  const children = Array.from(el.children || []);
-  const hasStableTextFields = children.some((child) =>
-    child.hasAttribute?.("data-local-text-key")
-      || child.querySelector?.("[data-local-text-key]"),
-  );
-  return children.length > 0
-    && (hasDirectText || hasStableTextFields)
-    && children.every(isSafeInlineSemanticTree);
-}
-
-export function resolveEditableTextTarget(target) {
-  if (!target || target.nodeType !== 1) return null;
-
-  // 优先选择外层文字块，使编辑器生成的 span 仍归属于原段落；code 和 summary
-  // 也属于独立文字根，因此 article > code、details > summary 可以直接编辑。
-  let current = target;
-  while (current && current.nodeType === 1) {
-    const tagName = String(current.tagName || "").toLowerCase();
-    if (preferredTextRootTags.has(tagName)
-      && (isEditableTextRoot(current) || isEditableMixedTextRoot(current))) return current;
-    current = current.parentElement;
-  }
-
-  // 外层文字块包含既有语义标签时，退回最近的纯文字叶子，保留原来的
-  // b/strong/code 等标签，而不是把父容器 textContent 整体覆盖。
-  current = target;
-  while (current && current.nodeType === 1) {
-    const tagName = String(current.tagName || "").toLowerCase();
-    if (nonEditableTextTags.has(tagName)) {
-      current = current.parentElement;
-      continue;
-    }
-    if (textBearingLeafTags.has(tagName) && isSimpleTextElement(current)) return current;
-    current = current.parentElement;
-  }
-  return null;
-}
-
 export function preservesTextWhitespace(el) {
   const tagName = String(el?.tagName || "").toUpperCase();
   return ["PRE", "CODE", "KBD", "SAMP"].includes(tagName);
@@ -238,3 +152,8 @@ export function shouldCommitInlineEdit(event) {
 export function shouldCancelInlineEdit(event) {
   return event.key === "Escape";
 }
+export {
+  isEditableMixedTextRoot,
+  isEditableTextRoot,
+  resolveEditableTextTarget,
+} from "./textFieldModel.js";

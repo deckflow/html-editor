@@ -478,3 +478,90 @@ test("rejects text patches for complex rich text nodes", () => {
   assert.equal(result.changed, false);
   assert.equal(result.html, source);
 });
+
+test("patches a direct text node without replacing mixed child elements", () => {
+  const source = '<footer id="links">参考资料：<a href="/repo">GitHub</a>，<a href="/guide">Guide</a>。</footer>';
+  const result = patchElementInHtml(source, { id: "links", originalText: "参考资料：GitHub，Guide。" }, [
+    {
+      type: "text-node-content",
+      nodePath: [0],
+      originalValue: "参考资料：",
+      value: "更多资料：",
+    },
+  ]);
+
+  assert.equal(result.matched, true);
+  assert.equal(
+    result.html,
+    '<footer id="links">更多资料：<a href="/repo">GitHub</a>，<a href="/guide">Guide</a>。</footer>',
+  );
+});
+
+test("patches nested and direct text nodes atomically", () => {
+  const source = '<footer id="links">Before <a href="/repo">Old link</a>.</footer>';
+  const result = patchElementInHtml(source, { id: "links", originalText: "Before Old link." }, [
+    { type: "text-node-content", nodePath: [0], originalValue: "Before ", value: "After " },
+    { type: "text-node-content", nodePath: [1, 0], originalValue: "Old link", value: "New link" },
+  ]);
+
+  assert.equal(result.matched, true);
+  assert.equal(result.html, '<footer id="links">After <a href="/repo">New link</a>.</footer>');
+});
+
+test("text node patches escape markup and reject stale paths or values", () => {
+  const source = '<footer id="links">A &amp; B<a href="/repo">Link</a></footer>';
+  const escaped = patchElementInHtml(source, { id: "links" }, [{
+    type: "text-node-content",
+    nodePath: [0],
+    originalValue: "A & B",
+    value: "A < B & C",
+  }]);
+  const staleValue = patchElementInHtml(source, { id: "links" }, [{
+    type: "text-node-content",
+    nodePath: [0],
+    originalValue: "Different",
+    value: "Nope",
+  }]);
+  const stalePath = patchElementInHtml(source, { id: "links" }, [{
+    type: "text-node-content",
+    nodePath: [9],
+    originalValue: "A & B",
+    value: "Nope",
+  }]);
+
+  assert.equal(escaped.matched, true);
+  assert.equal(escaped.html, '<footer id="links">A &lt; B &amp; C<a href="/repo">Link</a></footer>');
+  assert.equal(staleValue.matched, false);
+  assert.equal(stalePath.matched, false);
+  assert.equal(staleValue.html, source);
+  assert.equal(stalePath.html, source);
+});
+
+test("persists range style spans while preserving arbitrary authored wrappers", () => {
+  const source = '<footer id="links">参考资料：<a class="source" href="/repo">GitHub</a>。</footer>';
+  const result = patchElementInHtml(source, { id: "links", originalText: "参考资料：GitHub。" }, [{
+    type: "inner-html",
+    value: '<span data-local-text-key="label" style="font-weight: 700">参考资料</span>：'
+      + '<a class="source" href="/repo"><span data-local-text-key="link" '
+      + 'style="text-decoration-line: underline">GitHub</span></a>。',
+  }]);
+
+  assert.equal(result.matched, true);
+  assert.equal(
+    result.html,
+    '<footer id="links"><span data-local-text-key="label" style="font-weight: 700">参考资料</span>：'
+      + '<a class="source" href="/repo"><span data-local-text-key="link" '
+      + 'style="text-decoration-line: underline">GitHub</span></a>。</footer>',
+  );
+});
+
+test("rejects range HTML that changes authored wrapper attributes", () => {
+  const source = '<footer id="links">See <a href="/safe">Docs</a></footer>';
+  const changedHref = patchElementInHtml(source, { id: "links" }, [{
+    type: "inner-html",
+    value: 'See <a href="javascript:alert(1)"><span data-local-text-key="x">Docs</span></a>',
+  }]);
+
+  assert.equal(changedHref.matched, false);
+  assert.equal(changedHref.html, source);
+});

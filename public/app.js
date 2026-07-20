@@ -19,6 +19,11 @@ import { positionStart } from "./canvasEditorMath.js";
 import { createEditorHistory } from "./editorHistory.js";
 import { appendStructuralPatch, appendStylePatch } from "./patchQueue.js";
 import { buildSelectionSnapshot } from "./selectionSnapshot.js";
+import {
+  collectEditableTextFields,
+  planTextFieldContentOperations,
+  textStructureSignature,
+} from "./textFieldModel.js";
 
 // state 保存编辑器运行时状态；真正的 HTML 内容仍然在 iframe 文档里。
 const state = {
@@ -387,16 +392,33 @@ function editableTextValue(el) {
     : normalizeInlineEditText(el?.textContent);
 }
 
-function commitInlineTextEdit(el, originalText, originalHtml = null) {
+function commitInlineTextEdit(el, originalText, editSnapshot = null) {
   const text = editableTextValue(el);
   els.textValue.value = text;
-  const preservesMarkup = originalHtml != null;
-  if (preservesMarkup ? el.innerHTML === originalHtml : text === originalText) {
+  const preservesMarkup = editSnapshot != null;
+  if (preservesMarkup ? el.innerHTML === editSnapshot.html : text === originalText) {
     state.canvasEditor?.refresh();
-    return;
+    return true;
   }
   if (preservesMarkup) {
-    queuePatchOperation({ type: "inner-html", value: el.innerHTML });
+    const structure = textStructureSignature(el);
+    const fields = collectEditableTextFields(el);
+    const operations = structure === editSnapshot.structure
+      ? planTextFieldContentOperations(editSnapshot.fields, fields)
+      : null;
+    if (!operations) {
+      el.innerHTML = editSnapshot.html;
+      els.textValue.value = originalText;
+      setStatus("This edit changed the HTML structure and was reverted", "error");
+      state.canvasEditor?.refresh();
+      return false;
+    }
+    if (operations.length === 0) {
+      el.innerHTML = editSnapshot.html;
+      state.canvasEditor?.refresh();
+      return true;
+    }
+    for (const operation of operations) queuePatchOperation(operation);
   } else {
     el.textContent = text;
     queuePatchOperation({ type: "text-content", value: text });
@@ -410,6 +432,7 @@ function commitInlineTextEdit(el, originalText, originalHtml = null) {
   updateSelectedTextFingerprint(text);
   markDirty();
   state.canvasEditor?.refresh();
+  return true;
 }
 
 function normalizeEditableWhitespace(el) {
@@ -423,7 +446,32 @@ function normalizeEditableWhitespace(el) {
   });
 }
 
-function beginInlineTextEdit(el) {
+function placeInlineCaret(el, caret) {
+  if (!caret?.node?.isConnected || !el.contains(caret.node)) return;
+  const selection = el.ownerDocument.defaultView.getSelection();
+  const range = el.ownerDocument.createRange();
+  const maxOffset = caret.node.nodeType === 3
+    ? caret.node.data.length
+    : caret.node.childNodes.length;
+  range.setStart(caret.node, Math.max(0, Math.min(caret.offset, maxOffset)));
+  range.collapse(true);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function caretAtPoint(doc, event, target) {
+  const position = doc.caretPositionFromPoint?.(event.clientX, event.clientY);
+  if (position?.offsetNode && target.contains(position.offsetNode)) {
+    return { node: position.offsetNode, offset: position.offset };
+  }
+  const range = doc.caretRangeFromPoint?.(event.clientX, event.clientY);
+  if (range?.startContainer && target.contains(range.startContainer)) {
+    return { node: range.startContainer, offset: range.startOffset };
+  }
+  return null;
+}
+
+function beginInlineTextEdit(el, caret = null) {
   if (state.inlineEditingElement === el) return;
   stopInlineTextEdit({ commit: true });
   selectElement(el);
@@ -441,7 +489,11 @@ function beginInlineTextEdit(el) {
 
   const originalText = editableTextValue(el);
   const preserveMarkup = isEditableMixedTextRoot(el) || el.children.length > 0;
-  const originalHtml = preserveMarkup ? el.innerHTML : null;
+  const editSnapshot = preserveMarkup ? {
+    html: el.innerHTML,
+    fields: collectEditableTextFields(el),
+    structure: textStructureSignature(el),
+  } : null;
   const attributeSnapshot = captureInlineEditAttributes(el);
   state.inlineEditingElement = el;
   state.inlineAttributeSnapshot = attributeSnapshot;
@@ -449,6 +501,7 @@ function beginInlineTextEdit(el) {
   if (!preserveMarkup && !preservesTextWhitespace(el)) normalizeEditableWhitespace(el);
   applyInlineEditAttributes(el, { preserveMarkup });
   el.focus({ preventScroll: true });
+  placeInlineCaret(el, caret);
 
   let finished = false;
   let historyRecorded = addedFixedWidthWrap;
@@ -459,14 +512,14 @@ function beginInlineTextEdit(el) {
     el.removeEventListener("keydown", onKeyDown, true);
     el.removeEventListener("beforeinput", onBeforeInput, true);
     if (!commit) {
-      if (originalHtml != null) el.innerHTML = originalHtml;
+      if (editSnapshot) el.innerHTML = editSnapshot.html;
       else el.textContent = originalText;
       els.textValue.value = originalText;
       restoreInlineEditAttributes(el, attributeSnapshot);
     } else {
       // 先恢复成普通页面元素，再提交并检测失焦后的真实溢出状态。
       restoreInlineEditAttributes(el, attributeSnapshot);
-      commitInlineTextEdit(el, originalText, originalHtml);
+      commitInlineTextEdit(el, originalText, editSnapshot);
     }
     state.inlineEditingElement = null;
     state.inlineEditCleanup = null;
@@ -575,8 +628,11 @@ function injectEditorLayer() {
       // 已在当前文字中输入时保留浏览器默认点击，以便移动插入光标。
       if (state.inlineEditingElement === target) return;
       // 普通文字继续走浏览器默认行为，让光标落在真实点击位置；链接只阻止跳转。
-      if (target.closest("a") || target.tagName === "SUMMARY") event.preventDefault();
-      beginInlineTextEdit(target);
+      if (event.target.closest?.("a, button, summary, label")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      beginInlineTextEdit(target, caretAtPoint(doc, event, target));
     },
     true,
   );
