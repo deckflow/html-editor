@@ -4,7 +4,6 @@ import {
   dragTargetAtPoint,
   pointHitsRenderedText,
   pointInsideRect,
-  summaryDisclosureTargetAtPoint,
 } from "../public/pointerIntent.js";
 
 function createElement({ tagName = "DIV", textRects = [] } = {}) {
@@ -87,18 +86,15 @@ test("document roots and editor UI are never canvas drag targets", () => {
   assert.equal(dragTargetAtPoint({ target: ui, x: 1, y: 1 }), null);
 });
 
-test("summary disclosure space keeps its native toggle interaction", () => {
-  const summary = createElement({
-    tagName: "SUMMARY",
-    textRects: [{ left: 20, top: 20, right: 140, bottom: 40, width: 120, height: 20 }],
-  });
-  summary.closest = (selector) => {
-    if (selector === "summary") return summary;
-    return null;
-  };
+test("an already selected ancestor remains the drag target over nested children", () => {
+  const selected = createElement();
+  const child = createElement();
+  selected.contains = (candidate) => candidate === child;
 
-  assert.equal(summaryDisclosureTargetAtPoint({ target: summary, x: 200, y: 30 }), summary);
-  assert.equal(summaryDisclosureTargetAtPoint({ target: summary, x: 80, y: 30 }), null);
-  assert.equal(dragTargetAtPoint({ target: summary, x: 200, y: 30 }), summary);
-  assert.equal(dragTargetAtPoint({ target: summary, x: 80, y: 30 }), null);
+  assert.equal(dragTargetAtPoint({
+    target: child,
+    selectedElement: selected,
+    x: 180,
+    y: 30,
+  }), selected);
 });

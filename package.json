@@ -1,10 +1,22 @@
 {
-  "name": "local-html-editor",
+  "name": "@hyperdeck/html-editor",
   "version": "0.1.0",
   "description": "Run a local visual editor for HTML files",
   "type": "module",
   "bin": {
-    "local-html-editor": "./bin/local-html-editor.js"
+    "htmleditor": "bin/htmleditor.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deckflow/html-editor.git"
+  },
+  "homepage": "https://github.com/deckflow/html-editor#readme",
+  "bugs": {
+    "url": "https://github.com/deckflow/html-editor/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   },
   "exports": {
     ".": "./server.js",
@@ -14,16 +26,18 @@
     "bin",
     "cli.js",
     "htmlPatch.js",
+    "nativeFilePicker.js",
     "projectContext.js",
     "public",
     "server.js",
     "README.md"
   ],
   "scripts": {
-    "dev": "node ./bin/local-html-editor.js ./samples/demo.html --port 4177 --no-open",
-    "start": "node ./bin/local-html-editor.js",
+    "dev": "node ./bin/htmleditor.js ./samples/demo.html --port 4177 --no-open",
+    "start": "node ./bin/htmleditor.js ./samples/demo.html --no-open",
     "test": "node --test",
-    "pack:check": "npm pack --dry-run"
+    "pack:check": "npm pack --dry-run",
+    "prepublishOnly": "npm test"
   },
   "engines": {
     "node": ">=18.18"

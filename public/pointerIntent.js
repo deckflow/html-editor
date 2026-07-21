@@ -35,17 +35,21 @@ export function pointHitsRenderedText(element, x, y) {
   return false;
 }
 
-export function summaryDisclosureTargetAtPoint({ target, x, y }) {
-  const element = target?.nodeType === 1 ? target : target?.parentElement;
-  const summary = element?.closest?.("summary");
-  if (!summary) return null;
-  return pointHitsRenderedText(summary, x, y) ? null : summary;
-}
-
-export function dragTargetAtPoint({ target, x, y, selection = null, inlineEditingElement = null }) {
+export function dragTargetAtPoint({
+  target,
+  x,
+  y,
+  selection = null,
+  inlineEditingElement = null,
+  selectedElement = null,
+}) {
   if (inlineEditingElement || (selection && !selection.isCollapsed)) return null;
   const element = target?.nodeType === 1 ? target : target?.parentElement;
   if (!element || NON_CANVAS_TAGS.has(element.tagName)) return null;
   if (element.closest?.("[data-local-editor-ui]")) return null;
-  return pointHitsRenderedText(element, x, y) ? null : element;
+  const selectedContainsTarget = selectedElement
+    && selectedElement.isConnected !== false
+    && (selectedElement === element || selectedElement.contains?.(element));
+  const candidate = selectedContainsTarget ? selectedElement : element;
+  return pointHitsRenderedText(candidate, x, y) ? null : candidate;
 }

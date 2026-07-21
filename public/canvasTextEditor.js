@@ -20,12 +20,12 @@ import {
   toggleFontWeight,
 } from "./canvasEditorMath.js";
 
-const BLUE = "#1473e6";
+const BLUE = "#4f6ff5";
 
 const overlayStyles = `
   [data-local-editor-ui] {
     box-sizing: border-box;
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: "Avenir Next", Avenir, "Helvetica Neue", Helvetica, sans-serif;
     letter-spacing: 0;
   }
 
@@ -45,7 +45,8 @@ const overlayStyles = `
     position: fixed;
     z-index: 1;
     display: none;
-    border: 2px solid ${BLUE};
+    border: 1.5px solid ${BLUE};
+    box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.72);
     pointer-events: none;
   }
 
@@ -72,9 +73,9 @@ const overlayStyles = `
 
   .local-editor-handle {
     position: absolute;
-    border: 2px solid ${BLUE};
+    border: 1.5px solid ${BLUE};
     background: #fff;
-    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.16);
+    box-shadow: 0 2px 5px rgba(21, 25, 30, 0.18);
     pointer-events: auto;
     touch-action: none;
     z-index: 3;
@@ -83,36 +84,36 @@ const overlayStyles = `
   .local-editor-handle[data-handle="left"],
   .local-editor-handle[data-handle="right"] {
     top: 50%;
-    width: 8px;
-    height: 22px;
-    border-radius: 5px;
+    width: 9px;
+    height: 24px;
+    border-radius: 4px;
     cursor: ew-resize;
     transform: translateY(-50%);
   }
 
-  .local-editor-handle[data-handle="left"] { left: -5px; }
-  .local-editor-handle[data-handle="right"] { right: -5px; }
+  .local-editor-handle[data-handle="left"] { left: -5.5px; }
+  .local-editor-handle[data-handle="right"] { right: -5.5px; }
 
   .local-editor-handle[data-handle="move"] {
     left: 50%;
-    top: -7px;
-    width: 16px;
-    height: 8px;
-    border-radius: 5px;
+    top: -8px;
+    width: 20px;
+    height: 9px;
+    border-radius: 4px;
     background: ${BLUE};
     cursor: move;
     transform: translateX(-50%);
   }
 
   .local-editor-box[data-move-handle-placement="inside"] .local-editor-handle[data-handle="move"] {
-    top: 2px;
+    top: 3px;
   }
 
   .local-editor-handle[data-handle="move"]::after {
     content: "";
     position: absolute;
-    inset: 2px 5px;
-    border-radius: 2px;
+    inset: 2.5px 6px;
+    border-radius: 1px;
     background: #fff;
     opacity: 0.92;
   }
@@ -124,19 +125,20 @@ const overlayStyles = `
     z-index: 2;
     display: none;
     align-items: center;
-    color: #252a31;
-    background: rgba(255, 255, 255, 0.98);
-    border: 1px solid #e4e7ec;
-    border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16);
+    color: #d6dce0;
+    background: rgba(23, 26, 29, 0.98);
+    border: 1px solid #343a40;
+    border-radius: 7px;
+    box-shadow: 0 16px 40px rgba(10, 13, 16, 0.28), 0 2px 8px rgba(10, 13, 16, 0.18);
+    backdrop-filter: blur(12px);
     pointer-events: auto;
   }
 
   .local-editor-toolbar {
     max-width: calc(100vw - 16px);
-    min-height: 46px;
-    padding: 5px 7px;
-    gap: 3px;
+    min-height: 44px;
+    padding: 5px 6px;
+    gap: 2px;
     overflow-x: auto;
     scrollbar-width: none;
     white-space: nowrap;
@@ -145,9 +147,9 @@ const overlayStyles = `
   .local-editor-toolbar::-webkit-scrollbar { display: none; }
 
   .local-editor-actions {
-    min-height: 42px;
-    padding: 5px;
-    gap: 2px;
+    min-height: 40px;
+    padding: 4px;
+    gap: 1px;
   }
 
   .local-editor-toolbar button,
@@ -160,15 +162,17 @@ const overlayStyles = `
 
   .local-editor-tool,
   .local-editor-action {
-    width: 34px;
-    height: 34px;
-    min-height: 34px;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
     padding: 0;
     border: 0;
-    border-radius: 6px;
+    border-radius: 5px;
     background: transparent;
-    color: #343942;
-    font-size: 17px;
+    color: #c2c9ce;
+    font-size: 16px;
     line-height: 1;
     cursor: pointer;
   }
@@ -176,56 +180,69 @@ const overlayStyles = `
   .local-editor-tool:hover,
   .local-editor-action:hover,
   .local-editor-tool.is-active {
-    color: #1268c4;
-    background: #eaf3ff;
+    color: #ffffff;
+    background: #343a40;
+  }
+
+  .local-editor-tool.is-active {
+    color: #b8c4ff;
+    background: rgba(79, 111, 245, 0.24);
   }
 
   .local-editor-action[data-action="delete"]:hover {
-    color: #d92d20;
-    background: #fff0ee;
+    color: #ff9a8f;
+    background: rgba(199, 68, 53, 0.2);
+  }
+
+  .local-editor-action svg,
+  .local-editor-tool svg {
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
   }
 
   .local-editor-size {
     display: grid;
     grid-template-columns: 48px auto;
     align-items: center;
-    height: 34px;
+    height: 32px;
     padding: 0 6px;
-    border-radius: 6px;
-    background: #f6f7f9;
-    color: #667085;
+    border: 1px solid #343a40;
+    border-radius: 5px;
+    background: #202428;
+    color: #859098;
     font-size: 12px;
   }
 
   .local-editor-size input {
     width: 46px;
-    height: 30px;
+    height: 28px;
     padding: 0 3px;
     border: 0;
     outline: 0;
     background: transparent;
-    color: #252a31;
+    color: #f3f5f6;
     font-size: 13px;
   }
 
   .local-editor-divider {
     width: 1px;
-    height: 24px;
+    height: 22px;
     margin: 0 3px;
-    background: #e4e7ec;
+    background: #3a4147;
   }
 
   .local-editor-color {
     position: relative;
     display: grid;
     place-items: center;
-    width: 34px;
-    height: 34px;
-    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    border-radius: 5px;
     cursor: pointer;
   }
 
-  .local-editor-color:hover { background: #f2f4f7; }
+  .local-editor-color:hover { background: #343a40; }
 
   .local-editor-color span {
     font-size: 16px;
@@ -272,7 +289,7 @@ const overlayStyles = `
     align-items: center;
     justify-content: space-between;
     margin-bottom: 7px;
-    color: #4b5563;
+    color: #b7c0c6;
     font-size: 12px;
   }
 
@@ -280,9 +297,10 @@ const overlayStyles = `
     width: 56px;
     height: 28px;
     padding: 0 6px;
-    border: 1px solid #e4e7ec;
+    border: 1px solid #41484e;
     border-radius: 5px;
-    color: #252a31;
+    background: #202428;
+    color: #f3f5f6;
     text-align: right;
   }
 
@@ -377,15 +395,21 @@ function createUi(doc, runtimeId) {
       <button class="local-editor-tool" data-tool="italic" type="button" aria-label="Italic" title="Italic"><em>I</em></button>
       <button class="local-editor-tool" data-tool="underline" type="button" aria-label="Underline" title="Underline"><u>U</u></button>
       <button class="local-editor-tool" data-tool="strike" type="button" aria-label="Strikethrough" title="Strikethrough"><s>S</s></button>
-      <button class="local-editor-tool" data-tool="spacing" type="button" aria-label="Character and line spacing" title="Character and line spacing">↕</button>
+      <button class="local-editor-tool" data-tool="spacing" type="button" aria-label="Character and line spacing" title="Character and line spacing">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 6 4-4 4 4"/><path d="M12 2v20"/><path d="m8 18 4 4 4-4"/></svg>
+      </button>
       <label class="local-editor-color" title="Text color">
         <span>A</span>
         <input data-tool="color" type="color" aria-label="Toolbar text color">
       </label>
     </div>
     <div class="local-editor-actions" data-local-editor-ui="true" aria-label="Element actions">
-      <button class="local-editor-action" data-action="duplicate" type="button" aria-label="Duplicate element" title="Duplicate element">⧉</button>
-      <button class="local-editor-action" data-action="delete" type="button" aria-label="Delete element" title="Delete element">⌫</button>
+      <button class="local-editor-action" data-action="duplicate" type="button" aria-label="Duplicate element" title="Duplicate element">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+      </button>
+      <button class="local-editor-action" data-action="delete" type="button" aria-label="Delete element" title="Delete element">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
+      </button>
     </div>
     <div class="local-editor-spacing" data-local-editor-ui="true" aria-label="Text spacing">
       <div class="local-editor-spacing-row">
@@ -634,13 +658,10 @@ export function createCanvasTextEditor({
   function beginMove(event, {
     captureTarget = event.currentTarget,
     activationDistance = 0,
-    preservePointerDownDefault = false,
   } = {}) {
     if (!selected) return;
-    if (!preservePointerDownDefault) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
+    event.preventDefault();
+    event.stopPropagation();
     const handle = captureTarget?.setPointerCapture ? captureTarget : event.currentTarget;
     handle?.setPointerCapture?.(event.pointerId);
     const listenerTarget = doc;

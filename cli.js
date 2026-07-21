@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
-import { resolve } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { extname, resolve } from "node:path";
 
 import { createEditorServer } from "./server.js";
 
 export function parseCliArgs(argv) {
-  const result = { help: false, input: ".", open: true, port: 0 };
+  const result = { help: false, input: null, open: true, port: 0, root: null };
   let hasInput = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -26,6 +27,13 @@ export function parseCliArgs(argv) {
       index += 1;
       continue;
     }
+    if (value === "--root") {
+      const root = argv[index + 1];
+      if (!root || root.startsWith("--")) throw new Error("--root requires a directory path");
+      result.root = root;
+      index += 1;
+      continue;
+    }
     if (value.startsWith("--")) {
       throw new Error(`Unknown option: ${value}`);
     }
@@ -38,14 +46,32 @@ export function parseCliArgs(argv) {
   return result;
 }
 
+export function validateEditorInput(input) {
+  if (typeof input !== "string" || !input.trim()) {
+    throw new Error("Missing input path. Usage: htmleditor <file.html|directory>");
+  }
+
+  const absolutePath = resolve(input);
+  if (!existsSync(absolutePath)) {
+    throw new Error(`Input path does not exist: ${absolutePath}`);
+  }
+  const stats = statSync(absolutePath);
+  if (stats.isDirectory()) return absolutePath;
+  if (!stats.isFile() || extname(absolutePath).toLowerCase() !== ".html") {
+    throw new Error(`Input must be an .html file or directory: ${absolutePath}`);
+  }
+  return absolutePath;
+}
+
 export function printHelp(log = console.log) {
   log(`Local HTML Editor
 
 Usage:
-  local-html-editor [html-file-or-directory] [options]
+  htmleditor <file.html|directory> [options]
 
 Options:
   --port <number>  Preferred port; 0 selects an available port (default: 0)
+  --root <path>     Project/resource root; may be a parent of the HTML file
   --no-open        Do not open the browser automatically
   -h, --help       Show this help`);
 }
@@ -68,7 +94,13 @@ export async function runCli(argv = process.argv.slice(2)) {
     return null;
   }
 
-  const editor = await createEditorServer({ input: resolve(options.input), port: options.port });
+  const input = validateEditorInput(options.input);
+
+  const editor = await createEditorServer({
+    input,
+    root: options.root == null ? null : resolve(options.root),
+    port: options.port,
+  });
   console.log(`Local HTML Editor: ${editor.url}`);
   console.log(`Project: ${editor.projectDir}`);
   console.log(`Editing: ${editor.defaultFile}`);

@@ -2,28 +2,49 @@ import { createServer } from "node:http";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
+  statSync,
   watch,
   writeFileSync,
 } from "node:fs";
-import { basename, extname, join, relative, resolve } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { patchElementInHtml, patchElementsInHtml } from "./htmlPatch.js";
-import { createProjectContext, resolveProjectInput } from "./projectContext.js";
+import { chooseLocalHtmlDirectory, chooseLocalHtmlFile } from "./nativeFilePicker.js";
+import {
+  createProjectContext,
+  inferProjectRootForDirectory,
+  inferProjectRootForHtml,
+  resolveProjectInput,
+} from "./projectContext.js";
 
 const packageDir = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(packageDir, "public");
-const remoteFetchTimeoutMs = 10_000;
-const remoteHtmlLimitBytes = 5_000_000;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".mp3": "audio/mpeg",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
 };
 
 function json(res, status, payload) {
@@ -35,78 +56,12 @@ function json(res, status, payload) {
   res.end(body);
 }
 
-function isRemoteUrl(inputPath = "") {
-  return /^https?:\/\//i.test(inputPath.trim());
-}
-
-function normalizeRemoteUrl(inputPath) {
+function normalizeProjectFileInput(inputPath) {
+  if (!/^file:\/\//i.test(inputPath.trim())) return inputPath;
   try {
-    const remoteUrl = new URL(inputPath);
-    if (!["http:", "https:"].includes(remoteUrl.protocol)) return null;
-    const host = remoteUrl.hostname.toLowerCase();
-    const blockedHosts = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
-    const isPrivateIp =
-      /^10\./.test(host) ||
-      /^192\.168\./.test(host) ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
-      /^169\.254\./.test(host);
-    if (blockedHosts.has(host) || isPrivateIp || host.endsWith(".local")) return null;
-    return remoteUrl;
+    return fileURLToPath(new URL(inputPath));
   } catch {
-    return null;
-  }
-}
-
-function suggestedSnapshotPath(remoteUrl) {
-  const pathPart = remoteUrl.pathname.replace(/\/$/, "") || "/index";
-  const safeName = `${remoteUrl.hostname}${pathPart}`
-    .replace(/[^a-z0-9]+/gi, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase()
-    .slice(0, 80);
-  return `remote-${safeName || "page"}.html`;
-}
-
-function injectBaseHref(html, remoteHref) {
-  const baseTag = `<base href="${remoteHref.replaceAll('"', "&quot;")}">`;
-  if (/<base\s/i.test(html)) return html;
-  if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/<head([^>]*)>/i, `<head$1>\n    ${baseTag}`);
-  }
-  if (/<html[^>]*>/i.test(html)) {
-    return html.replace(/<html([^>]*)>/i, `<html$1>\n  <head>${baseTag}</head>`);
-  }
-  return `<!doctype html>\n<html><head>${baseTag}</head><body>${html}</body></html>`;
-}
-
-async function fetchRemoteHtml(inputPath) {
-  const remoteUrl = normalizeRemoteUrl(inputPath);
-  if (!remoteUrl) throw new Error("Only public http(s) URLs are supported");
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), remoteFetchTimeoutMs);
-  try {
-    const response = await fetch(remoteUrl, {
-      signal: controller.signal,
-      headers: {
-        accept: "text/html,application/xhtml+xml",
-        "user-agent": "local-html-editor/0.1",
-      },
-    });
-    if (!response.ok) throw new Error(`Remote server returned ${response.status}`);
-    const contentType = response.headers.get("content-type") || "";
-    if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) {
-      throw new Error(`Remote URL is not HTML (${contentType})`);
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length > remoteHtmlLimitBytes) throw new Error("Remote HTML is too large");
-    return {
-      content: injectBaseHref(buffer.toString("utf-8"), remoteUrl.href),
-      suggestedPath: suggestedSnapshotPath(remoteUrl),
-      url: remoteUrl.href,
-    };
-  } finally {
-    clearTimeout(timeout);
+    return "";
   }
 }
 
@@ -148,6 +103,14 @@ function safeStaticPath(urlPath) {
     : null;
 }
 
+function projectAssetBase(filePath) {
+  const normalized = filePath.replaceAll("\\", "/");
+  const slash = normalized.lastIndexOf("/");
+  const directory = slash === -1 ? [] : normalized.slice(0, slash).split("/");
+  const encoded = directory.map((segment) => encodeURIComponent(segment)).join("/");
+  return `/project-assets/${encoded ? `${encoded}/` : ""}`;
+}
+
 function startProjectWatcher(projectDir, onChange) {
   try {
     const watcher = watch(projectDir, { recursive: true }, (_eventType, filename) => {
@@ -169,20 +132,101 @@ function startProjectWatcher(projectDir, onChange) {
  * the CLI. Port 0 asks the OS for an available port, which makes parallel local
  * editor sessions possible without a separate port-scanning dependency.
  */
-export async function createEditorServer({ input = ".", host = "127.0.0.1", port = 0 } = {}) {
+export async function createEditorServer({
+  input = ".",
+  root = null,
+  host = "127.0.0.1",
+  port = 0,
+  selectLocalHtmlFile = chooseLocalHtmlFile,
+  selectLocalHtmlDirectory = chooseLocalHtmlDirectory,
+} = {}) {
   if (host !== "127.0.0.1") throw new Error("The editor server only binds to 127.0.0.1");
 
-  const resolvedInput = resolveProjectInput(input);
-  const project = createProjectContext(resolvedInput.projectDir);
-  const { projectDir } = project;
-  const defaultFile = resolvedInput.defaultFile.replaceAll("\\", "/");
-  const backupDir = join(projectDir, ".local-html-editor", "backups");
+  const startupInput = normalizeProjectFileInput(input);
+  const startupIsDirectory = Boolean(
+    startupInput && existsSync(startupInput) && statSync(startupInput).isDirectory(),
+  );
+  let startupRoot = root;
+  if (startupRoot == null) {
+    startupRoot = startupIsDirectory
+      ? inferProjectRootForDirectory(startupInput)
+      : inferProjectRootForHtml(startupInput);
+  }
+  const resolvedInput = resolveProjectInput(input, { projectRoot: startupRoot });
+  let project = createProjectContext(resolvedInput.projectDir, {
+    htmlDirectory: startupIsDirectory ? resolve(startupInput) : resolvedInput.projectDir,
+  });
+  let projectDir = project.projectDir;
+  let defaultFile = resolvedInput.defaultFile.replaceAll("\\", "/");
+  let backupDir = join(projectDir, ".local-html-editor", "backups");
   const eventClients = new Set();
   const internalWrites = new Map();
   let watcher = null;
 
-  function safeProjectPath(inputPath = defaultFile, options) {
-    return project.safeHtmlPath(inputPath, options);
+  function activateProjectInput(inputPath, kind = "file") {
+    const normalized = normalizeProjectFileInput(inputPath);
+    if (!normalized || !isAbsolute(normalized) || !existsSync(normalized)) {
+      throw new Error(`Selected ${kind} must exist`);
+    }
+
+    const stats = statSync(normalized);
+    if (kind === "directory" && !stats.isDirectory()) {
+      throw new Error("Selected path must be a directory");
+    }
+    if (kind === "file" && (!stats.isFile() || !/\.html?$/i.test(normalized))) {
+      throw new Error("Selected file must be an existing HTML file");
+    }
+
+    const selectedRoot = kind === "directory"
+      ? inferProjectRootForDirectory(normalized)
+      : inferProjectRootForHtml(normalized);
+    const selected = resolveProjectInput(normalized, { projectRoot: selectedRoot });
+    watcher?.close();
+    project = createProjectContext(selected.projectDir, {
+      htmlDirectory: kind === "directory" ? normalized : selected.projectDir,
+    });
+    projectDir = project.projectDir;
+    defaultFile = selected.defaultFile.replaceAll("\\", "/");
+    backupDir = join(projectDir, ".local-html-editor", "backups");
+    internalWrites.clear();
+    if (server.listening) watcher = startProjectWatcher(projectDir, sendFileChange);
+    return safeProjectPath(defaultFile);
+  }
+
+  function activateHtmlFile(filePath) {
+    return activateProjectInput(filePath, "file");
+  }
+
+  function safeProjectPath(inputPath = defaultFile) {
+    return project.safeHtmlPath(normalizeProjectFileInput(inputPath));
+  }
+
+  function resolveSelectedProjectFile(fileName, content) {
+    if (
+      typeof fileName !== "string" ||
+      basename(fileName) !== fileName ||
+      !/\.html?$/i.test(fileName) ||
+      typeof content !== "string"
+    ) {
+      return null;
+    }
+
+    const matches = [];
+    const visit = (directory, prefix = "") => {
+      const entries = readdirSync(directory, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          visit(join(directory, entry.name), rel);
+        } else if (entry.isFile() && entry.name === fileName) {
+          const target = safeProjectPath(rel);
+          if (target && readFileSync(target.abs, "utf-8") === content) matches.push(target);
+        }
+      }
+    };
+    visit(projectDir);
+    return matches.length === 1 ? matches[0] : null;
   }
 
   function backupFile(target) {
@@ -203,9 +247,11 @@ export async function createEditorServer({ input = ".", host = "127.0.0.1", port
 
   function sendFileChange(path) {
     const writeTime = internalWrites.get(path);
-    if (writeTime && Date.now() - writeTime < 1_000) {
+    if (writeTime) {
+      // Atomic rename can emit more than one watcher event. Keep the marker for
+      // the full suppression window so every event from our own save is ignored.
+      if (Date.now() - writeTime < 1_000) return;
       internalWrites.delete(path);
-      return;
     }
     const message = `event: file-change\ndata: ${JSON.stringify({ path })}\n\n`;
     for (const client of eventClients) client.write(message);
@@ -236,35 +282,102 @@ export async function createEditorServer({ input = ".", host = "127.0.0.1", port
       return;
     }
 
+    if (url.pathname === "/api/html-files" && req.method === "GET") {
+      const files = project.listHtmlFiles();
+      json(res, 200, {
+        ok: true,
+        files: files.map((path) => ({
+          path,
+          name: basename(path),
+        })),
+      });
+      return;
+    }
+
+    // The browser File API deliberately hides absolute paths, which means a
+    // normal <input type=file> cannot load sibling CSS/JS/images. Because this
+    // is a localhost CLI, open the OS picker in Node and switch the active
+    // project context to the selected file before loading its preview.
+    if (
+      (url.pathname === "/api/select-local-path" || url.pathname === "/api/select-local-file")
+      && req.method === "POST"
+    ) {
+      try {
+        let kind = "file";
+        if (url.pathname === "/api/select-local-path") {
+          const payload = JSON.parse(await readBody(req));
+          kind = payload.kind;
+          if (kind !== "file" && kind !== "directory") {
+            throw new Error("Selection kind must be file or directory");
+          }
+        }
+        const selectedPath = kind === "directory"
+          ? await selectLocalHtmlDirectory()
+          : await selectLocalHtmlFile();
+        if (!selectedPath) {
+          json(res, 200, { ok: true, cancelled: true });
+          return;
+        }
+        const target = activateProjectInput(selectedPath, kind);
+        json(res, 200, {
+          ok: true,
+          cancelled: false,
+          kind,
+          path: target.rel.replaceAll("\\", "/"),
+          displayPath: target.abs,
+          projectDir,
+        });
+      } catch (error) {
+        const unavailable = error?.code === "PICKER_UNAVAILABLE";
+        json(res, unavailable ? 501 : 400, {
+          ok: false,
+          code: unavailable ? "PICKER_UNAVAILABLE" : "INVALID_LOCAL_FILE",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
     if (url.pathname === "/api/file" && req.method === "GET") {
       const inputPath = url.searchParams.get("path") || defaultFile;
-      if (isRemoteUrl(inputPath)) {
+      let target = safeProjectPath(inputPath);
+      const normalizedInput = normalizeProjectFileInput(inputPath);
+      if (!target && isAbsolute(normalizedInput)) {
         try {
-          const remote = await fetchRemoteHtml(inputPath);
-          json(res, 200, {
-            ok: true,
-            mode: "remote",
-            path: remote.url,
-            suggestedPath: remote.suggestedPath,
-            content: remote.content,
-          });
-        } catch (error) {
-          json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+          target = activateHtmlFile(normalizedInput);
+        } catch {
+          // Preserve the normal not-found response below.
         }
-        return;
       }
-
-      const target = safeProjectPath(inputPath);
       if (!target) {
         json(res, 404, { ok: false, error: "HTML file not found inside the selected project" });
         return;
       }
       json(res, 200, {
         ok: true,
-        mode: "local",
         path: target.rel.replaceAll("\\", "/"),
+        displayPath: target.abs,
+        previewBase: projectAssetBase(target.rel),
         content: readFileSync(target.abs, "utf-8"),
       });
+      return;
+    }
+
+    // A browser file picker hides absolute paths. If the selected file exactly
+    // matches one unique HTML file in the CLI project, recover its project path
+    // so sibling CSS, fonts, images, and scripts remain available.
+    if (url.pathname === "/api/resolve-project-file" && req.method === "POST") {
+      try {
+        const payload = JSON.parse(await readBody(req));
+        const target = resolveSelectedProjectFile(payload.name, payload.content);
+        json(res, 200, {
+          ok: true,
+          matched: Boolean(target),
+          path: target ? target.rel.replaceAll("\\", "/") : null,
+        });
+      } catch (error) {
+        json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
 
@@ -381,31 +494,6 @@ export async function createEditorServer({ input = ".", host = "127.0.0.1", port
       return;
     }
 
-    if (url.pathname === "/api/file" && req.method === "POST") {
-      try {
-        const payload = JSON.parse(await readBody(req));
-        const target = safeProjectPath(payload.path || defaultFile, { allowMissing: true });
-        if (!target) {
-          json(res, 400, { ok: false, error: "Only HTML files inside the selected project can be edited" });
-          return;
-        }
-        if (typeof payload.content !== "string") {
-          json(res, 400, { ok: false, error: "content must be a string" });
-          return;
-        }
-        const backupPath = backupFile(target);
-        writeProjectFile(target, payload.content);
-        json(res, 200, {
-          ok: true,
-          path: target.rel.replaceAll("\\", "/"),
-          backupPath: backupPath ? relative(projectDir, backupPath) : null,
-        });
-      } catch (error) {
-        json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
-      }
-      return;
-    }
-
     if (url.pathname === "/preview") {
       const target = safeProjectPath(url.searchParams.get("path") || defaultFile);
       if (!target) {
@@ -417,14 +505,71 @@ export async function createEditorServer({ input = ".", host = "127.0.0.1", port
       return;
     }
 
-    const publicPath = url.pathname === "/" ? "/index.html" : url.pathname;
-    const absPublicPath = safeStaticPath(publicPath);
-    if (!absPublicPath) {
-      res.writeHead(403);
-      res.end("Forbidden");
+    if (url.pathname.startsWith("/project-assets/") && req.method === "GET") {
+      let assetPath;
+      try {
+        assetPath = decodeURIComponent(url.pathname.slice("/project-assets/".length));
+      } catch {
+        res.writeHead(400);
+        res.end("Invalid asset path");
+        return;
+      }
+      const target = project.safeAssetPath(assetPath);
+      if (!target) {
+        res.writeHead(404);
+        res.end("Project asset not found");
+        return;
+      }
+      serveFile(res, target.abs);
       return;
     }
-    serveFile(res, absPublicPath);
+
+    if (url.pathname === "/" && req.method === "GET") {
+      res.writeHead(302, { location: "/__local-editor__/" });
+      res.end();
+      return;
+    }
+
+    if (url.pathname === "/__local-editor__" && req.method === "GET") {
+      res.writeHead(302, { location: "/__local-editor__/" });
+      res.end();
+      return;
+    }
+
+    if (url.pathname.startsWith("/__local-editor__/") && req.method === "GET") {
+      const suffix = url.pathname.slice("/__local-editor__".length);
+      const publicPath = suffix === "/" ? "/index.html" : suffix;
+      const absPublicPath = safeStaticPath(publicPath);
+      if (!absPublicPath) {
+        res.writeHead(403);
+        res.end("Forbidden");
+        return;
+      }
+      serveFile(res, absPublicPath);
+      return;
+    }
+
+    // Root-relative URLs such as /shared/theme.css are resolved from the active
+    // project root. Editor-owned files live under /__local-editor__/ so common
+    // project names such as /styles.css and /app.js cannot collide with them.
+    if (req.method === "GET") {
+      let rootAssetPath;
+      try {
+        rootAssetPath = decodeURIComponent(url.pathname.slice(1));
+      } catch {
+        res.writeHead(400);
+        res.end("Invalid asset path");
+        return;
+      }
+      const target = project.safeAssetPath(rootAssetPath);
+      if (target) {
+        serveFile(res, target.abs);
+        return;
+      }
+    }
+
+    res.writeHead(404);
+    res.end("Not found");
   });
 
   await new Promise((resolveListen, rejectListen) => {

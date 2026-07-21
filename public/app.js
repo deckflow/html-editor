@@ -15,10 +15,16 @@ import {
   shouldEnsureFixedWidthWrap,
 } from "./inlineEdit.js";
 import { createCanvasTextEditor } from "./canvasTextEditor.js";
+import { createAutoSaveController } from "./autoSaveController.js";
 import { positionStart } from "./canvasEditorMath.js";
 import { createEditorHistory } from "./editorHistory.js";
 import { appendStructuralPatch, appendStylePatch } from "./patchQueue.js";
-import { dragTargetAtPoint, summaryDisclosureTargetAtPoint } from "./pointerIntent.js";
+import { dragTargetAtPoint } from "./pointerIntent.js";
+import { activateEmbeddedPreview } from "./previewLifecycle.js";
+import {
+  injectPreviewBase,
+  previewSandboxForMode,
+} from "./previewHtml.js";
 import { buildSelectionSnapshot } from "./selectionSnapshot.js";
 import {
   collectEditableTextFields,
@@ -29,10 +35,9 @@ import {
 // state 保存编辑器运行时状态；真正的 HTML 内容仍然在 iframe 文档里。
 const state = {
   currentPath: "",
-  savePath: "",
   mode: "local",
-  saveMode: "patch",
   source: "",
+  previewBaseHref: "",
   selectionSnapshot: null,
   pendingPatches: [],
   inlineEditingElement: null,
@@ -53,16 +58,29 @@ const state = {
   browserFileHandle: null,
   browserFile: null,
   browserFileName: "",
+  htmlFiles: [],
+  fileSwitchInProgress: false,
+  autoSaveError: null,
 };
+
+let autoSave = null;
 
 // 缓存页面控件引用，后续逻辑不需要反复 querySelector。
 const els = {
+  openPicker: document.querySelector("#openPicker"),
   chooseFileBtn: document.querySelector("#chooseFileBtn"),
+  openPickerMenu: document.querySelector("#openPickerMenu"),
+  openPickerItems: [...document.querySelectorAll("[data-open-kind]")],
   htmlFileInput: document.querySelector("#htmlFileInput"),
-  filePath: document.querySelector("#filePath"),
-  saveBtn: document.querySelector("#saveBtn"),
+  workspace: document.querySelector(".workspace"),
+  fileCount: document.querySelector("#fileCount"),
+  fileSearch: document.querySelector("#fileSearch"),
+  fileList: document.querySelector("#fileList"),
+  fileListEmpty: document.querySelector("#fileListEmpty"),
+  toggleFilesBtn: document.querySelector("#toggleFilesBtn"),
   reloadBtn: document.querySelector("#reloadBtn"),
   preview: document.querySelector("#preview"),
+  previewStatus: document.querySelector("#previewStatus"),
   status: document.querySelector("#status"),
   selectionName: document.querySelector("#selectionName"),
   selectorText: document.querySelector("#selectorText"),
@@ -106,7 +124,93 @@ const editorStyle = `
 // 顶部工具栏的状态提示，tone 用来区分普通、成功、错误状态。
 function setStatus(message, tone = "normal") {
   els.status.textContent = message;
-  els.status.style.color = tone === "error" ? "#b42318" : tone === "ok" ? "#126e63" : "";
+  els.previewStatus.dataset.tone = tone;
+}
+
+function createFileItemIcon() {
+  const namespace = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(namespace, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.8");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  for (const d of ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z", "M14 2v6h6", "m9 13-2 2 2 2", "m15 13 2 2-2 2"]) {
+    const path = document.createElementNS(namespace, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  const wrapper = document.createElement("span");
+  wrapper.className = "file-item-icon";
+  wrapper.append(svg);
+  return wrapper;
+}
+
+function renderHtmlFiles() {
+  const query = els.fileSearch.value.trim().toLowerCase();
+  const files = query
+    ? state.htmlFiles.filter((file) => file.path.toLowerCase().includes(query))
+    : state.htmlFiles;
+  const fragment = document.createDocumentFragment();
+
+  for (const file of files) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "file-item";
+    button.setAttribute("aria-label", file.path);
+    button.title = file.path;
+    const copy = document.createElement("span");
+    copy.className = "file-item-copy";
+    const name = document.createElement("span");
+    name.className = "file-item-name";
+    name.textContent = file.name || file.path.split("/").pop();
+    const directory = document.createElement("span");
+    directory.className = "file-item-dir";
+    directory.textContent = file.path.includes("/")
+      ? file.path.slice(0, file.path.lastIndexOf("/"))
+      : "Project root";
+    copy.append(name, directory);
+    button.append(createFileItemIcon(), copy);
+    if (state.mode === "local" && file.path === state.currentPath) {
+      button.setAttribute("aria-current", "page");
+    }
+    button.addEventListener("click", () => switchWorkspaceFile(file.path));
+    fragment.append(button);
+  }
+
+  els.fileList.replaceChildren(fragment);
+  els.fileCount.textContent = String(state.htmlFiles.length);
+  els.fileListEmpty.hidden = files.length > 0;
+}
+
+async function refreshHtmlFiles() {
+  if (state.mode !== "local") {
+    state.htmlFiles = [];
+    renderHtmlFiles();
+    return;
+  }
+  const response = await fetch("/api/html-files");
+  const payload = await response.json();
+  if (!response.ok || !payload.ok || !Array.isArray(payload.files)) {
+    throw new Error(payload.error || "Failed to load HTML file list");
+  }
+  state.htmlFiles = payload.files;
+  renderHtmlFiles();
+}
+
+async function switchWorkspaceFile(path) {
+  if (state.fileSwitchInProgress || (state.mode === "local" && path === state.currentPath)) return;
+  state.fileSwitchInProgress = true;
+  try {
+    await saveFile();
+    await loadFile(path);
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    state.fileSwitchInProgress = false;
+  }
 }
 
 // 没有选中元素时禁用右侧编辑控件；选中后统一解锁。
@@ -126,6 +230,16 @@ function setControlsEnabled(enabled) {
 // iframe 使用 srcdoc 加载 HTML，和父页面同源，因此可以直接访问 contentDocument。
 function previewDocument() {
   return els.preview.contentDocument;
+}
+
+// srcdoc 没有本地文件 URL。仅本地项目预览需要临时 base 标签，让 link、图片、
+// 字体等相对路径通过服务端受限的只读资源路由加载。
+function setPreviewContent(content) {
+  const html = state.mode === "local"
+    ? injectPreviewBase(content, state.previewBaseHref)
+    : content;
+  els.preview.setAttribute("sandbox", previewSandboxForMode(state.mode));
+  els.preview.srcdoc = html;
 }
 
 function selectedElement() {
@@ -191,6 +305,7 @@ function captureHistoryEntry() {
     const escaped = CSS.escape(state.editorRuntimeId);
     clone.querySelectorAll(`[data-local-editor-runtime="${escaped}"]`).forEach((node) => node.remove());
   }
+  clone.querySelectorAll(`[${PREVIEW_BASE_ATTRIBUTE}]`).forEach((node) => node.remove());
 
   const selectedClone = resolveTarget(clone, selectedTarget());
   if (selectedClone && state.selectedMarker) {
@@ -229,10 +344,6 @@ function recordHistory() {
 function parsePx(value, fallback = 0) {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function isRemotePath(path) {
-  return /^https?:\/\//i.test(path.trim());
 }
 
 function targetForElement(el) {
@@ -680,6 +791,7 @@ function injectEditorLayer() {
     y: event.clientY,
     selection: doc.defaultView.getSelection(),
     inlineEditingElement: state.inlineEditingElement,
+    selectedElement: selectedElement(),
   });
 
   const onPointerMove = (event) => {
@@ -697,22 +809,14 @@ function injectEditorLayer() {
     if (event.button !== 0) return;
     const target = dragTargetForEvent(event);
     if (!target) return;
-    const preserveNativeSummaryClick = Boolean(summaryDisclosureTargetAtPoint({
-      target: event.target,
-      x: event.clientX,
-      y: event.clientY,
-    }));
-    if (!preserveNativeSummaryClick) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
     stopInlineTextEdit({ commit: true });
     selectElement(target);
     applyDragMarker(target);
     state.canvasEditor?.beginMove(event, {
       captureTarget: target,
       activationDistance: 3,
-      preservePointerDownDefault: preserveNativeSummaryClick,
     });
   };
 
@@ -724,15 +828,6 @@ function injectEditorLayer() {
       return;
     }
     if (event.target.closest?.("[data-local-editor-ui]")) return;
-    const summaryDisclosure = summaryDisclosureTargetAtPoint({
-      target: event.target,
-      x: event.clientX,
-      y: event.clientY,
-    });
-    if (summaryDisclosure) {
-      restoreDragMarker();
-      return;
-    }
     const dragTarget = dragTargetForEvent(event);
     if (dragTarget) {
       event.preventDefault();
@@ -743,18 +838,18 @@ function injectEditorLayer() {
     }
     const target = resolveEditableTextTarget(event.target);
     if (!target) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
       stopInlineTextEdit({ commit: true });
       clearSelection();
       setStatus("Selection cleared");
       return;
     }
-    // 已在当前文字中输入时保留浏览器默认点击，以便移动插入光标。
+    // 原页面的 click 处理器不参与编辑模式；当前 contenteditable 仍保留
+    // 浏览器移动插入光标的默认行为。
+    event.stopImmediatePropagation();
     if (state.inlineEditingElement === target) return;
-    // 普通文字继续走浏览器默认行为，让光标落在真实点击位置；链接只阻止跳转。
-    if (event.target.closest?.("a, button, summary, label")) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
+    event.preventDefault();
     beginInlineTextEdit(target, caretAtPoint(doc, event, target));
   };
 
@@ -775,10 +870,13 @@ function injectEditorLayer() {
     doc.removeEventListener("keydown", handleEditorShortcut);
     restoreDragMarker();
   };
+
+  activateEmbeddedPreview(doc);
 }
 
 function restoreHistoryEntry(entry, message) {
   if (!entry) return;
+  autoSave?.cancel();
   stopInlineTextEdit({ commit: false });
   state.previewEventCleanup?.();
   state.previewEventCleanup = null;
@@ -791,6 +889,7 @@ function restoreHistoryEntry(entry, message) {
   state.pendingPatches = cloneValue(entry.pendingPatches) || [];
   state.patchSequence = entry.patchSequence || 0;
   state.dirty = Boolean(entry.dirty);
+  state.autoSaveError = null;
   els.preview.addEventListener(
     "load",
     () => {
@@ -798,10 +897,11 @@ function restoreHistoryEntry(entry, message) {
       const restored = resolveTarget(previewDocument()?.documentElement, entry.selectedTarget);
       if (restored?.nodeType === 1) selectElement(restored);
       setStatus(message, "ok");
+      if (state.dirty) autoSave?.schedule();
     },
     { once: true },
   );
-  els.preview.srcdoc = entry.content;
+  setPreviewContent(entry.content);
 }
 
 function undoEdit() {
@@ -880,7 +980,8 @@ function handleEditorShortcut(event) {
 // 用户改了文字、字号或位置后，标记为未保存。
 function markDirty() {
   state.dirty = true;
-  setStatus("Unsaved changes");
+  setStatus("Unsaved changes", "warn");
+  autoSave?.schedule();
 }
 
 // left/top 只有在元素不是 static 定位时才会生效。
@@ -910,30 +1011,14 @@ function updatePositionFromInputs() {
   state.canvasEditor?.sync();
 }
 
-// 保存前序列化 iframe 里的完整 HTML。
-// 先去掉编辑器注入的样式和选中标记，确保写回磁盘的是干净页面。
-function serializeCleanHtml() {
-  const doc = previewDocument();
-  if (!doc) return state.source;
-  stopInlineTextEdit({ commit: true });
-  state.previewEventCleanup?.();
-  state.previewEventCleanup = null;
-  state.canvasEditor?.destroy();
-  state.canvasEditor = null;
-  state.editorStyle?.remove();
-  state.editorStyle = null;
-  clearSelection();
-  return `<!doctype html>\n${doc.documentElement.outerHTML}\n`;
-}
-
 // 从本地服务读取 HTML，并放进 iframe.srcdoc。
-// path 可以是 samples/demo.html 这样的本地路径，也可以是 https://example.com。
+// path 可以是项目相对路径、绝对路径或 file:// URL。
 // load 监听必须先注册再设置 srcdoc，避免 HTML 很小时错过 load 事件。
-async function loadFile(path = els.filePath.value.trim()) {
+async function loadFile(path = state.currentPath) {
+  autoSave?.cancel();
   state.currentPath = path || (state.mode === "browser-file" ? "" : state.currentPath);
   if (!state.currentPath) throw new Error("Choose an HTML file to load");
-  els.filePath.value = state.currentPath;
-  setStatus(isRemotePath(state.currentPath) ? "Fetching remote HTML..." : "Loading...");
+  setStatus("Loading...");
   stopInlineTextEdit({ commit: false });
   state.previewEventCleanup?.();
   state.previewEventCleanup = null;
@@ -950,28 +1035,26 @@ async function loadFile(path = els.filePath.value.trim()) {
   }
 
   state.source = payload.content;
-  state.mode = payload.mode || "local";
-  state.savePath = payload.suggestedPath || payload.path || state.currentPath;
-  state.saveMode = state.mode === "remote" ? "snapshot" : "patch";
+  state.mode = "local";
+  state.currentPath = payload.path;
+  state.previewBaseHref = payload.previewBase || "";
   state.browserFileHandle = null;
   state.browserFile = null;
   state.browserFileName = "";
   clearPendingPatches();
   state.history.clear();
   state.dirty = false;
+  state.autoSaveError = null;
+  await refreshHtmlFiles();
   els.preview.addEventListener(
     "load",
     () => {
       injectEditorLayer();
-      const message =
-        state.mode === "remote"
-          ? `Loaded remote URL. Save will create ${state.savePath}`
-          : `Loaded ${payload.path}`;
-      setStatus(message, "ok");
+      setStatus(`Loaded ${payload.path}`, "ok");
     },
     { once: true },
   );
-  els.preview.srcdoc = state.source;
+  setPreviewContent(state.source);
 }
 
 function isHtmlFile(file) {
@@ -984,6 +1067,15 @@ async function loadBrowserHtmlFile(file, handle = null) {
   if (!isHtmlFile(file)) throw new Error("Only one .html file can be selected");
   const content = await file.text();
 
+  const resolved = await postJson("/api/resolve-project-file", {
+    name: file.name,
+    content,
+  });
+  if (resolved.matched && resolved.path) {
+    await loadFile(resolved.path);
+    return;
+  }
+
   stopInlineTextEdit({ commit: false });
   state.canvasEditor?.destroy();
   state.canvasEditor = null;
@@ -992,27 +1084,28 @@ async function loadBrowserHtmlFile(file, handle = null) {
   clearSelection();
 
   state.currentPath = file.name;
-  state.savePath = file.name;
   state.source = content;
   state.mode = "browser-file";
-  state.saveMode = "browser-file";
+  state.previewBaseHref = "";
   state.browserFileHandle = handle;
   state.browserFile = file;
   state.browserFileName = file.name;
+  state.htmlFiles = [];
+  renderHtmlFiles();
   clearPendingPatches();
   state.history.clear();
   state.dirty = false;
-  els.filePath.value = file.name;
+  state.autoSaveError = null;
   els.preview.addEventListener(
     "load",
     () => {
       injectEditorLayer();
-      const suffix = handle ? "" : " Save will download an edited copy.";
+      const suffix = handle ? "" : " Auto-save requires file write permission.";
       setStatus(`Loaded ${file.name}.${suffix}`, "ok");
     },
     { once: true },
   );
-  els.preview.srcdoc = content;
+  setPreviewContent(content);
 }
 
 async function postJson(url, payload) {
@@ -1028,142 +1121,138 @@ async function postJson(url, payload) {
   return data;
 }
 
-function reloadPreviewFromContent(content, message) {
-  state.source = content;
-  state.dirty = false;
-  clearPendingPatches();
-  state.history.clear();
-  stopInlineTextEdit({ commit: false });
-  state.canvasEditor?.destroy();
-  state.canvasEditor = null;
-  state.editorStyle?.remove();
-  state.editorStyle = null;
-  clearSelection();
-  els.preview.addEventListener(
-    "load",
-    () => {
-      injectEditorLayer();
-      setStatus(message, "ok");
-    },
-    { once: true },
-  );
-  els.preview.srcdoc = content;
+function serializablePatches(patches) {
+  return patches.map(({ target, operations }) => ({ target, operations }));
 }
 
-// 远程 URL 的第一次保存无法 patch 原站点，先保存成本地 HTML 快照。
-async function saveSnapshot() {
-  const content = serializeCleanHtml();
-  setStatus(state.mode === "remote" ? `Saving snapshot to ${state.savePath}...` : "Saving...");
-
-  const payload = await postJson("/api/file", { path: state.savePath, content });
-  state.currentPath = payload.path;
-  state.savePath = payload.path;
-  state.mode = "local";
-  state.saveMode = "patch";
-  els.filePath.value = payload.path;
-  const backupText = payload.backupPath ? ` Backup: ${payload.backupPath}` : "";
-  reloadPreviewFromContent(content, `Saved ${payload.path}.${backupText}`);
-}
-
-function downloadHtmlCopy(content, fileName) {
-  const blobUrl = URL.createObjectURL(new Blob([content], { type: "text/html;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = blobUrl;
-  link.download = fileName;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
-}
-
-// 任意本地文件没有服务器路径，仍复用同一套 target + operations patch。
-// Chromium 文件句柄可直接写回；普通 file input 回退为下载修改后的副本。
-async function saveBrowserFile() {
-  if (state.pendingPatches.length === 0) {
-    setStatus("No local patches to save", "ok");
+// Auto-save detaches the current batch before writing. Edits made while the
+// request is in flight accumulate in a fresh queue and cannot be cleared by an
+// older response.
+async function flushPendingPatches() {
+  if (!state.dirty || state.pendingPatches.length === 0) {
     state.dirty = false;
-    return;
+    return true;
   }
+  // contenteditable is committed on blur. Saving during an active composition
+  // would disturb the caret and can capture an invalid intermediate DOM shape.
+  if (state.inlineEditingElement) return false;
 
-  setStatus(`Saving ${state.browserFileName}...`);
-  const payload = await postJson("/api/patch-content", {
-    content: state.source,
-    patches: state.pendingPatches.map(({ target, operations }) => ({ target, operations })),
-  });
-  if (payload.matched === false) {
-    const suffix = Number.isInteger(payload.failedIndex) ? ` at operation ${payload.failedIndex + 1}` : "";
-    throw new Error(`Selected element could not be resolved in the source HTML${suffix}`);
-  }
+  const batch = state.pendingPatches;
+  state.pendingPatches = [];
+  state.autoSaveError = null;
+  setStatus("Saving changes...");
 
-  let message;
-  if (state.browserFileHandle) {
-    const writable = await state.browserFileHandle.createWritable();
-    await writable.write(payload.content);
-    await writable.close();
-    message = `Saved ${state.browserFileName}`;
-  } else {
-    downloadHtmlCopy(payload.content, state.browserFileName);
-    message = `Downloaded edited ${state.browserFileName}`;
-  }
-  reloadPreviewFromContent(payload.content, message);
-}
-
-// 本地 HTML 保存走 HyperFrames Studio 风格的局部 patch。
-async function savePatches() {
-  if (state.pendingPatches.length === 0) {
-    setStatus("No local patches to save", "ok");
-    state.dirty = false;
-    return;
-  }
-
-  setStatus(`Saving ${state.pendingPatches.length} local patches to ${state.savePath}...`);
-  const payload = await postJson("/api/patch-elements", {
-    path: state.savePath,
-    patches: state.pendingPatches.map(({ target, operations }) => ({ target, operations })),
-  });
-  if (payload.matched === false) {
-    const suffix = Number.isInteger(payload.failedIndex) ? ` at operation ${payload.failedIndex + 1}` : "";
-    throw new Error(`Selected element could not be resolved in the source HTML${suffix}`);
-  }
-
-  const backupText = payload.backupPath ? ` Backup: ${payload.backupPath}` : "";
-  reloadPreviewFromContent(
-    payload.content || state.source,
-    payload.changed ? `Saved ${state.savePath} with local patches.${backupText}` : "No file changes needed",
-  );
-}
-
-// 保存入口：远程首次落快照，本地后续走局部 patch。
-async function saveFile() {
-  stopInlineTextEdit({ commit: true });
-  if (state.saveMode === "browser-file") {
-    await saveBrowserFile();
-    return;
-  }
-  if (state.saveMode === "snapshot") {
-    await saveSnapshot();
-    return;
-  }
-  await savePatches();
-}
-
-// 文件选择后会自动加载；路径框仍支持本地相对路径和远程 URL，按 Enter 加载。
-els.filePath.addEventListener("keydown", async (event) => {
-  if (event.key !== "Enter") return;
-  event.preventDefault();
   try {
-    await loadFile();
+    let payload;
+    if (state.mode === "browser-file") {
+      if (!state.browserFileHandle) {
+        throw new Error("Auto-save needs file write permission. Choose the HTML file again.");
+      }
+      payload = await postJson("/api/patch-content", {
+        content: state.source,
+        patches: serializablePatches(batch),
+      });
+      if (payload.matched === false) {
+        const suffix = Number.isInteger(payload.failedIndex) ? ` at operation ${payload.failedIndex + 1}` : "";
+        throw new Error(`Selected element could not be resolved in the source HTML${suffix}`);
+      }
+      const writable = await state.browserFileHandle.createWritable();
+      await writable.write(payload.content);
+      await writable.close();
+    } else {
+      payload = await postJson("/api/patch-elements", {
+        path: state.currentPath,
+        patches: serializablePatches(batch),
+      });
+      if (payload.matched === false) {
+        const suffix = Number.isInteger(payload.failedIndex) ? ` at operation ${payload.failedIndex + 1}` : "";
+        throw new Error(`Selected element could not be resolved in the source HTML${suffix}`);
+      }
+    }
+
+    state.source = payload.content || state.source;
+    state.dirty = state.pendingPatches.length > 0;
+    if (state.dirty) {
+      setStatus("Unsaved changes", "warn");
+      autoSave?.schedule();
+    } else {
+      // The old manual Save reloaded the iframe and cleared history. Auto-save
+      // keeps the live DOM and selection, but closes the persisted undo batch so
+      // a later undo cannot diverge from the file on disk.
+      state.history.clear();
+      setStatus(`Saved ${state.currentPath}`, "ok");
+    }
+    return true;
   } catch (error) {
-    setStatus(error.message, "error");
+    state.pendingPatches = [...batch, ...state.pendingPatches];
+    state.dirty = true;
+    state.autoSaveError = error;
+    setStatus(`Auto-save failed: ${error.message}`, "error");
+    return true;
   }
+}
+
+autoSave = createAutoSaveController({
+  delay: 1_200,
+  maxWait: 5_000,
+  save: flushPendingPatches,
 });
 
-async function chooseHtmlFile() {
+// Explicit transitions commit an active text edit and wait for the same
+// background pipeline, so switching files never races an unfinished write.
+async function saveFile() {
+  stopInlineTextEdit({ commit: true });
+  await autoSave.flushNow();
   if (state.dirty) {
-    setStatus("Save or reload the current file before choosing another file.", "error");
+    throw state.autoSaveError || new Error("The current changes could not be saved");
+  }
+}
+
+els.fileSearch.addEventListener("input", renderHtmlFiles);
+els.toggleFilesBtn.addEventListener("click", () => {
+  const collapsed = !els.workspace.classList.contains("files-collapsed");
+  els.workspace.classList.toggle("files-collapsed", collapsed);
+  els.toggleFilesBtn.title = collapsed ? "Show HTML files" : "Hide HTML files";
+  els.toggleFilesBtn.setAttribute("aria-label", els.toggleFilesBtn.title);
+  els.toggleFilesBtn.setAttribute("aria-expanded", String(!collapsed));
+});
+
+function setOpenPickerMenu(open) {
+  els.openPickerMenu.hidden = !open;
+  els.chooseFileBtn.setAttribute("aria-expanded", String(open));
+}
+
+async function chooseLocalInput(kind) {
+  setOpenPickerMenu(false);
+  try {
+    await saveFile();
+    const response = await fetch("/api/select-local-path", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind }),
+    });
+    const payload = await response.json();
+    if (response.ok && payload.ok) {
+      if (!payload.cancelled) await loadFile(payload.path);
+      return;
+    }
+    if (payload.code !== "PICKER_UNAVAILABLE") {
+      throw new Error(payload.error || "Failed to choose HTML file");
+    }
+  } catch (error) {
+    if (error?.message !== "Native file picker is unavailable") {
+      setStatus(error.message, "error");
+      return;
+    }
+  }
+
+  if (kind === "directory") {
+    setStatus("Folder selection requires the local CLI desktop picker.", "error");
     return;
   }
 
+  // Non-desktop environments fall back to the browser picker. The browser
+  // intentionally hides absolute paths, so related local assets may be unavailable.
   if ("showOpenFilePicker" in window) {
     try {
       const [handle] = await window.showOpenFilePicker({
@@ -1185,7 +1274,24 @@ async function chooseHtmlFile() {
   els.htmlFileInput.click();
 }
 
-els.chooseFileBtn.addEventListener("click", chooseHtmlFile);
+els.chooseFileBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setOpenPickerMenu(els.openPickerMenu.hidden);
+});
+els.openPickerMenu.addEventListener("click", (event) => event.stopPropagation());
+els.openPickerItems.forEach((button) => {
+  button.addEventListener("click", () => chooseLocalInput(button.dataset.openKind));
+});
+document.addEventListener("click", (event) => {
+  if (!els.openPicker.contains(event.target)) setOpenPickerMenu(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !els.openPickerMenu.hidden) {
+    event.stopPropagation();
+    setOpenPickerMenu(false);
+    els.chooseFileBtn.focus();
+  }
+});
 els.htmlFileInput.addEventListener("change", async () => {
   const files = [...els.htmlFileInput.files];
   try {
@@ -1203,6 +1309,7 @@ els.htmlFileInput.addEventListener("change", async () => {
 // Reload：重新从磁盘读取当前文件，会丢弃未保存的 iframe 内改动。
 els.reloadBtn.addEventListener("click", async () => {
   try {
+    await saveFile();
     if (state.mode === "browser-file") {
       const file = state.browserFileHandle
         ? await state.browserFileHandle.getFile()
@@ -1211,15 +1318,6 @@ els.reloadBtn.addEventListener("click", async () => {
       return;
     }
     await loadFile(state.currentPath);
-  } catch (error) {
-    setStatus(error.message, "error");
-  }
-});
-
-// Save：写回本地文件，后端会自动生成备份。
-els.saveBtn.addEventListener("click", async () => {
-  try {
-    await saveFile();
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -1296,30 +1394,32 @@ els.nudgeButtons.forEach((button) => {
 // 有未保存修改时，刷新/关闭页面前给用户一次浏览器原生提醒。
 window.addEventListener("beforeunload", (event) => {
   if (!state.dirty) return;
+  void saveFile().catch(() => {});
   event.preventDefault();
   event.returnValue = "";
 });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && state.dirty) {
+    void saveFile().catch(() => {});
+  }
+});
 window.addEventListener("keydown", handleEditorShortcut);
 
-// 本地文件被其他编辑器修改时，通过服务端 SSE 获知。没有未保存改动时自动刷新；
-// 当前有改动时只提示，避免覆盖用户正在进行的编辑。
+// 本地文件被其他编辑器修改时，通过服务端 SSE 获知。编辑器不会自动重载
+// iframe，避免保存或外部写盘打断当前选区、光标和拖拽状态。
 function connectProjectEvents() {
   state.projectEvents?.close();
   const events = new EventSource("/api/events");
   events.addEventListener("file-change", async (event) => {
     const change = JSON.parse(event.data);
     if (state.mode !== "local") return;
-    if (change.path !== state.currentPath) return;
-    if (state.dirty) {
-      setStatus(`${change.path} changed on disk. Reload when ready.`, "error");
-      return;
-    }
     try {
-      await loadFile(state.currentPath);
-      setStatus(`Reloaded ${state.currentPath} after an external change.`, "ok");
+      await refreshHtmlFiles();
     } catch (error) {
       setStatus(error.message, "error");
     }
+    if (change.path !== state.currentPath) return;
+    if (!state.dirty) setStatus(`${change.path} changed on disk. Reload to update the preview.`, "warn");
   });
   state.projectEvents = events;
 }
@@ -1330,13 +1430,16 @@ async function bootstrapProject() {
   const project = await response.json();
   if (!response.ok || !project.ok) throw new Error(project.error || "Failed to load project");
   state.currentPath = project.defaultFile;
-  state.savePath = project.defaultFile;
-  els.filePath.value = project.defaultFile;
   await loadFile(project.defaultFile);
   if (project.watch) connectProjectEvents();
 }
 
-window.addEventListener("pagehide", () => state.projectEvents?.close());
+window.addEventListener("pagehide", () => {
+  state.projectEvents?.close();
+});
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) connectProjectEvents();
+});
 
 bootstrapProject().catch((error) => {
   setStatus(error.message, "error");

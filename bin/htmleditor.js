@@ -3,6 +3,6 @@
 import { runCli } from "../cli.js";
 
 runCli().catch((error) => {
-  console.error(`Local HTML Editor: ${error instanceof Error ? error.message : String(error)}`);
+  console.error(`htmleditor: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
 });
