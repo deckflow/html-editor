@@ -18,6 +18,7 @@ import { createCanvasTextEditor } from "./canvasTextEditor.js";
 import { positionStart } from "./canvasEditorMath.js";
 import { createEditorHistory } from "./editorHistory.js";
 import { appendStructuralPatch, appendStylePatch } from "./patchQueue.js";
+import { dragTargetAtPoint, summaryDisclosureTargetAtPoint } from "./pointerIntent.js";
 import { buildSelectionSnapshot } from "./selectionSnapshot.js";
 import {
   collectEditableTextFields,
@@ -43,6 +44,9 @@ const state = {
   patchSequence: 0,
   editorStyle: null,
   selectedMarker: null,
+  dragMarker: null,
+  suppressPreviewClick: false,
+  previewEventCleanup: null,
   editorRuntimeId: null,
   history: createEditorHistory(50),
   projectEvents: null,
@@ -87,6 +91,14 @@ const editorStyle = `
 
   [data-local-editor-editing="true"] {
     outline: none !important;
+  }
+
+  [data-local-editor-drag-ready="true"] {
+    cursor: grab !important;
+  }
+
+  [data-local-editor-drag-ready="dragging"] {
+    cursor: grabbing !important;
   }
 
 `;
@@ -191,6 +203,13 @@ function captureHistoryEntry() {
   if (selectedClone && state.inlineAttributeSnapshot) {
     restoreInlineEditAttributes(selectedClone, state.inlineAttributeSnapshot);
   }
+  if (selectedClone && state.dragMarker?.element === selectedElement()) {
+    if (state.dragMarker.present) {
+      selectedClone.setAttribute("data-local-editor-drag-ready", state.dragMarker.value ?? "");
+    } else {
+      selectedClone.removeAttribute("data-local-editor-drag-ready");
+    }
+  }
 
   return {
     content: `<!doctype html>\n${clone.outerHTML}\n`,
@@ -283,6 +302,29 @@ function applySelectedMarker(el) {
   el.setAttribute("data-local-editor-selected", "true");
 }
 
+function restoreDragMarker() {
+  const marker = state.dragMarker;
+  if (!marker) return;
+  if (marker.present) marker.element.setAttribute("data-local-editor-drag-ready", marker.value ?? "");
+  else marker.element.removeAttribute("data-local-editor-drag-ready");
+  state.dragMarker = null;
+}
+
+function applyDragMarker(el, value = "true") {
+  if (state.dragMarker?.element === el) {
+    el.setAttribute("data-local-editor-drag-ready", value);
+    return;
+  }
+  restoreDragMarker();
+  if (!el?.isConnected) return;
+  state.dragMarker = {
+    element: el,
+    present: el.hasAttribute("data-local-editor-drag-ready"),
+    value: el.getAttribute("data-local-editor-drag-ready"),
+  };
+  el.setAttribute("data-local-editor-drag-ready", value);
+}
+
 // 给当前选中元素生成一个人能读懂的 selector，用于右侧 Selection 面板展示。
 // 如果元素有 id，优先展示 #id；否则退化成 nth-of-type 路径。
 function selectorFor(el) {
@@ -307,6 +349,7 @@ function selectorFor(el) {
 // 取消选中时，清理 iframe 内的选中标记，并把右侧面板恢复到初始状态。
 function clearSelection() {
   stopInlineTextEdit({ commit: false });
+  restoreDragMarker();
   restoreSelectedMarker();
   state.selectionSnapshot = null;
   state.canvasEditor?.clear();
@@ -563,6 +606,10 @@ function injectEditorLayer() {
   const doc = previewDocument();
   if (!doc) return;
 
+  state.previewEventCleanup?.();
+  state.previewEventCleanup = null;
+  state.suppressPreviewClick = false;
+
   state.editorStyle?.remove();
   state.editorRuntimeId = `local-editor-${crypto.randomUUID()}`;
 
@@ -609,39 +656,132 @@ function injectEditorLayer() {
       syncInspector();
     },
     onTextRangeChange(range) {
+      if (range) restoreDragMarker();
       const snapshot = refreshSelectionSnapshot(range);
       state.canvasEditor?.updateSelection(snapshot, range);
     },
+    onMoveStart(element) {
+      state.suppressPreviewClick = true;
+      applyDragMarker(element, "dragging");
+    },
+    onMoveEnd(element, moved) {
+      if (element?.isConnected) applyDragMarker(element, "true");
+      if (moved) {
+        setTimeout(() => {
+          state.suppressPreviewClick = false;
+        }, 0);
+      }
+    },
   });
 
-  doc.addEventListener(
-    "click",
-    (event) => {
-      if (event.target.closest?.("[data-local-editor-ui]")) return;
-      const target = resolveEditableTextTarget(event.target);
-      if (!target) {
-        stopInlineTextEdit({ commit: true });
-        clearSelection();
-        setStatus("Selection cleared");
-        return;
-      }
-      // 已在当前文字中输入时保留浏览器默认点击，以便移动插入光标。
-      if (state.inlineEditingElement === target) return;
-      // 普通文字继续走浏览器默认行为，让光标落在真实点击位置；链接只阻止跳转。
-      if (event.target.closest?.("a, button, summary, label")) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-      beginInlineTextEdit(target, caretAtPoint(doc, event, target));
-    },
-    true,
-  );
+  const dragTargetForEvent = (event) => dragTargetAtPoint({
+    target: event.target,
+    x: event.clientX,
+    y: event.clientY,
+    selection: doc.defaultView.getSelection(),
+    inlineEditingElement: state.inlineEditingElement,
+  });
+
+  const onPointerMove = (event) => {
+    if (event.buttons) return;
+    const target = dragTargetForEvent(event);
+    if (target) applyDragMarker(target);
+    else restoreDragMarker();
+  };
+
+  const onPointerOut = (event) => {
+    if (!event.relatedTarget) restoreDragMarker();
+  };
+
+  const onPointerDown = (event) => {
+    if (event.button !== 0) return;
+    const target = dragTargetForEvent(event);
+    if (!target) return;
+    const preserveNativeSummaryClick = Boolean(summaryDisclosureTargetAtPoint({
+      target: event.target,
+      x: event.clientX,
+      y: event.clientY,
+    }));
+    if (!preserveNativeSummaryClick) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+    stopInlineTextEdit({ commit: true });
+    selectElement(target);
+    applyDragMarker(target);
+    state.canvasEditor?.beginMove(event, {
+      captureTarget: target,
+      activationDistance: 3,
+      preservePointerDownDefault: preserveNativeSummaryClick,
+    });
+  };
+
+  const onClick = (event) => {
+    if (state.suppressPreviewClick) {
+      state.suppressPreviewClick = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    if (event.target.closest?.("[data-local-editor-ui]")) return;
+    const summaryDisclosure = summaryDisclosureTargetAtPoint({
+      target: event.target,
+      x: event.clientX,
+      y: event.clientY,
+    });
+    if (summaryDisclosure) {
+      restoreDragMarker();
+      return;
+    }
+    const dragTarget = dragTargetForEvent(event);
+    if (dragTarget) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      selectElement(dragTarget);
+      applyDragMarker(dragTarget);
+      return;
+    }
+    const target = resolveEditableTextTarget(event.target);
+    if (!target) {
+      stopInlineTextEdit({ commit: true });
+      clearSelection();
+      setStatus("Selection cleared");
+      return;
+    }
+    // 已在当前文字中输入时保留浏览器默认点击，以便移动插入光标。
+    if (state.inlineEditingElement === target) return;
+    // 普通文字继续走浏览器默认行为，让光标落在真实点击位置；链接只阻止跳转。
+    if (event.target.closest?.("a, button, summary, label")) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    beginInlineTextEdit(target, caretAtPoint(doc, event, target));
+  };
+
+  const onToggle = () => state.canvasEditor?.refresh();
+
+  doc.addEventListener("pointermove", onPointerMove, true);
+  doc.addEventListener("pointerout", onPointerOut, true);
+  doc.addEventListener("pointerdown", onPointerDown, true);
+  doc.addEventListener("click", onClick, true);
+  doc.addEventListener("toggle", onToggle, true);
   doc.addEventListener("keydown", handleEditorShortcut);
+  state.previewEventCleanup = () => {
+    doc.removeEventListener("pointermove", onPointerMove, true);
+    doc.removeEventListener("pointerout", onPointerOut, true);
+    doc.removeEventListener("pointerdown", onPointerDown, true);
+    doc.removeEventListener("click", onClick, true);
+    doc.removeEventListener("toggle", onToggle, true);
+    doc.removeEventListener("keydown", handleEditorShortcut);
+    restoreDragMarker();
+  };
 }
 
 function restoreHistoryEntry(entry, message) {
   if (!entry) return;
   stopInlineTextEdit({ commit: false });
+  state.previewEventCleanup?.();
+  state.previewEventCleanup = null;
   state.canvasEditor?.destroy();
   state.canvasEditor = null;
   state.editorStyle?.remove();
@@ -656,7 +796,7 @@ function restoreHistoryEntry(entry, message) {
     () => {
       injectEditorLayer();
       const restored = resolveTarget(previewDocument()?.documentElement, entry.selectedTarget);
-      if (restored && resolveEditableTextTarget(restored)) selectElement(restored);
+      if (restored?.nodeType === 1) selectElement(restored);
       setStatus(message, "ok");
     },
     { once: true },
@@ -776,6 +916,8 @@ function serializeCleanHtml() {
   const doc = previewDocument();
   if (!doc) return state.source;
   stopInlineTextEdit({ commit: true });
+  state.previewEventCleanup?.();
+  state.previewEventCleanup = null;
   state.canvasEditor?.destroy();
   state.canvasEditor = null;
   state.editorStyle?.remove();
@@ -793,6 +935,8 @@ async function loadFile(path = els.filePath.value.trim()) {
   els.filePath.value = state.currentPath;
   setStatus(isRemotePath(state.currentPath) ? "Fetching remote HTML..." : "Loading...");
   stopInlineTextEdit({ commit: false });
+  state.previewEventCleanup?.();
+  state.previewEventCleanup = null;
   state.canvasEditor?.destroy();
   state.canvasEditor = null;
   state.editorStyle?.remove();

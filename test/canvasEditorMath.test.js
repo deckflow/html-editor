@@ -71,6 +71,14 @@ test("move keeps the visual element inside viewport margins", () => {
   );
 });
 
+test("move handle flips inside when the selected box touches the viewport top", () => {
+  assert.equal(typeof math.moveHandlePlacement, "function");
+  assert.equal(math.moveHandlePlacement({ top: 0 }), "inside");
+  assert.equal(math.moveHandlePlacement({ top: 9, clearance: 10 }), "inside");
+  assert.equal(math.moveHandlePlacement({ top: 10, clearance: 10 }), "outside");
+  assert.equal(math.moveHandlePlacement({ top: 18, viewportTop: 12, clearance: 8 }), "inside");
+});
+
 test("positionStart reads computed and positioned-element offsets without jumping", () => {
   assert.equal(typeof math.positionStart, "function");
   assert.equal(

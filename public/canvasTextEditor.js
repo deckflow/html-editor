@@ -12,6 +12,7 @@ import {
   floatingPosition,
   lineHeightRatio,
   moveFromPointer,
+  moveHandlePlacement,
   positionStart,
   resizeFromHandle,
   toggleDecoration,
@@ -76,6 +77,7 @@ const overlayStyles = `
     box-shadow: 0 1px 4px rgba(15, 23, 42, 0.16);
     pointer-events: auto;
     touch-action: none;
+    z-index: 3;
   }
 
   .local-editor-handle[data-handle="left"],
@@ -100,6 +102,10 @@ const overlayStyles = `
     background: ${BLUE};
     cursor: move;
     transform: translateX(-50%);
+  }
+
+  .local-editor-box[data-move-handle-placement="inside"] .local-editor-handle[data-handle="move"] {
+    top: 2px;
   }
 
   .local-editor-handle[data-handle="move"]::after {
@@ -406,6 +412,8 @@ export function createCanvasTextEditor({
   onDelete = () => {},
   onSelectionChange = () => {},
   onTextRangeChange = () => {},
+  onMoveStart = () => {},
+  onMoveEnd = () => {},
 }) {
   const win = doc.defaultView;
   const { root, style } = createUi(doc, runtimeId);
@@ -424,6 +432,18 @@ export function createCanvasTextEditor({
   let selectionSnapshot = null;
   let spacingOpen = false;
   let activeRange = null;
+  let uiRangeLock = null;
+
+  function lockActiveRangeForUi() {
+    if (activeRange && !activeRange.collapsed) uiRangeLock = activeRange.cloneRange();
+  }
+
+  function lockedRangeIsUsable() {
+    if (!uiRangeLock || !selected?.isConnected) return false;
+    const common = uiRangeLock.commonAncestorContainer;
+    const commonElement = common?.nodeType === 1 ? common : common?.parentElement;
+    return Boolean(commonElement && selected.contains(commonElement));
+  }
 
   function show(element, visible, display = "flex") {
     element.style.display = visible ? display : "none";
@@ -495,6 +515,7 @@ export function createCanvasTextEditor({
     box.style.top = `${rect.top}px`;
     box.style.width = `${rect.width}px`;
     box.style.height = `${rect.height}px`;
+    box.dataset.moveHandlePlacement = moveHandlePlacement({ top: rect.top });
 
     const hasTextRange = Boolean(activeRange && selectionSnapshot?.rangeStyle);
     if (hasTextRange) {
@@ -557,6 +578,7 @@ export function createCanvasTextEditor({
       const result = applyRangeStylesAsTextFields(selected, activeRange, changes);
       if (!result?.range) return;
       activeRange = result.range.cloneRange();
+      if (uiRangeLock) uiRangeLock = activeRange.cloneRange();
       onInlineHtmlChange(selected.innerHTML, selected, activeRange);
       onSelectionChange(selected);
       sync();
@@ -577,6 +599,7 @@ export function createCanvasTextEditor({
     selectionSnapshot = snapshot;
     selected = snapshot?.element || null;
     activeRange = range && !range.collapsed ? range.cloneRange?.() || range : null;
+    if (uiRangeLock && activeRange) uiRangeLock = activeRange.cloneRange?.() || activeRange;
     if (!selected) {
       clear();
       return;
@@ -589,6 +612,7 @@ export function createCanvasTextEditor({
     selectionSnapshot = snapshot;
     selected = snapshot?.element || null;
     activeRange = null;
+    uiRangeLock = null;
     spacingOpen = false;
     show(spacing, false);
     sync();
@@ -599,6 +623,7 @@ export function createCanvasTextEditor({
     selected = null;
     selectionSnapshot = null;
     activeRange = null;
+    uiRangeLock = null;
     spacingOpen = false;
     show(box, false);
     show(toolbar, false);
@@ -606,13 +631,19 @@ export function createCanvasTextEditor({
     show(spacing, false);
   }
 
-  function beginMove(event) {
+  function beginMove(event, {
+    captureTarget = event.currentTarget,
+    activationDistance = 0,
+    preservePointerDownDefault = false,
+  } = {}) {
     if (!selected) return;
-    event.preventDefault();
-    event.stopPropagation();
-    onBeforeChange();
-    const handle = event.currentTarget;
-    handle.setPointerCapture(event.pointerId);
+    if (!preservePointerDownDefault) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const handle = captureTarget?.setPointerCapture ? captureTarget : event.currentTarget;
+    handle?.setPointerCapture?.(event.pointerId);
+    const listenerTarget = doc;
     const startX = event.clientX;
     const startY = event.clientY;
     const computed = win.getComputedStyle(selected);
@@ -634,21 +665,33 @@ export function createCanvasTextEditor({
     const wasStatic = computed.position === "static";
     const snapTargets = collectMoveSnapTargets(doc, win, selected, rect);
     const movingRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
-    if (wasStatic) selected.style.position = "relative";
     let latest = { left: startLeft, top: startTop };
+    let dragging = false;
 
     const move = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+      if (!dragging && Math.hypot(deltaX, deltaY) < activationDistance) return;
+      if (!dragging) {
+        dragging = true;
+        moveEvent.preventDefault();
+        moveEvent.stopPropagation();
+        onBeforeChange();
+        onMoveStart(selected);
+        if (wasStatic) selected.style.position = "relative";
+      }
       const bounded = moveFromPointer({
         startLeft,
         startTop,
-        deltaX: moveEvent.clientX - startX,
-        deltaY: moveEvent.clientY - startY,
+        deltaX,
+        deltaY,
         startRectLeft: rect.left,
         startRectTop: rect.top,
         width: rect.width,
         height: rect.height,
         viewportWidth: win.innerWidth,
         viewportHeight: win.innerHeight,
+        margin: 0,
       });
       const boundedDx = bounded.left - startLeft;
       const boundedDy = bounded.top - startTop;
@@ -671,6 +714,7 @@ export function createCanvasTextEditor({
         height: rect.height,
         viewportWidth: win.innerWidth,
         viewportHeight: win.innerHeight,
+        margin: 0,
       });
       const finalDx = latest.left - startLeft;
       const finalDy = latest.top - startTop;
@@ -687,9 +731,13 @@ export function createCanvasTextEditor({
     };
     const finish = () => {
       clearSnapGuides();
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("pointerup", finish);
-      handle.removeEventListener("pointercancel", finish);
+      listenerTarget.removeEventListener("pointermove", move);
+      listenerTarget.removeEventListener("pointerup", finish);
+      listenerTarget.removeEventListener("pointercancel", finish);
+      if (!dragging) {
+        onMoveEnd(selected, false);
+        return;
+      }
       const changes = [];
       if (wasStatic) changes.push({ property: "position", value: "relative" });
       changes.push(
@@ -699,10 +747,11 @@ export function createCanvasTextEditor({
       onStyleOperations(changes, selected, activeRange);
       onSelectionChange(selected);
       sync();
+      onMoveEnd(selected, true);
     };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", finish);
-    handle.addEventListener("pointercancel", finish);
+    listenerTarget.addEventListener("pointermove", move);
+    listenerTarget.addEventListener("pointerup", finish);
+    listenerTarget.addEventListener("pointercancel", finish);
   }
 
   function beginResize(event) {
@@ -862,6 +911,14 @@ export function createCanvasTextEditor({
 
   function updateTextSelection() {
     if (!selected?.isConnected) return;
+    // Native controls such as input[type=color] temporarily clear the browser Selection.
+    // Keep the editor-owned Range until the user explicitly returns to the canvas.
+    if (lockedRangeIsUsable()) {
+      activeRange = uiRangeLock.cloneRange();
+      refresh();
+      return;
+    }
+    uiRangeLock = null;
     // 点击工具栏会把焦点移到控件上，但仍需保留刚才的文字 Range 来应用样式。
     if (root.contains(doc.activeElement) && activeRange) return;
     const selection = win.getSelection();
@@ -881,22 +938,42 @@ export function createCanvasTextEditor({
   }
 
   const keepUiEvent = (event) => event.stopPropagation();
+  const releaseUiRangeOnCanvasPointerDown = (event) => {
+    if (!root.contains(event.target)) uiRangeLock = null;
+  };
+  toolbar.addEventListener("pointerdown", lockActiveRangeForUi, true);
+  toolbar.addEventListener("focusin", lockActiveRangeForUi, true);
+  spacing.addEventListener("pointerdown", lockActiveRangeForUi, true);
+  spacing.addEventListener("focusin", lockActiveRangeForUi, true);
   root.addEventListener("click", keepUiEvent);
   root.addEventListener("dblclick", keepUiEvent);
   win.addEventListener("resize", refresh);
   doc.addEventListener("scroll", refresh, true);
   doc.addEventListener("selectionchange", updateTextSelection);
+  doc.addEventListener("pointerdown", releaseUiRangeOnCanvasPointerDown, true);
 
   function destroy() {
     clearSnapGuides();
     win.removeEventListener("resize", refresh);
     doc.removeEventListener("scroll", refresh, true);
     doc.removeEventListener("selectionchange", updateTextSelection);
+    doc.removeEventListener("pointerdown", releaseUiRangeOnCanvasPointerDown, true);
     root.remove();
     style.remove();
     selected = null;
     selectionSnapshot = null;
+    uiRangeLock = null;
   }
 
-  return { select, updateSelection, clear, refresh, sync, duplicateSelected, deleteSelected, destroy };
+  return {
+    select,
+    updateSelection,
+    clear,
+    refresh,
+    sync,
+    beginMove,
+    duplicateSelected,
+    deleteSelected,
+    destroy,
+  };
 }

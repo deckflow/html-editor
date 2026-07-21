@@ -95,6 +95,11 @@ export function moveFromPointer({
   };
 }
 
+export function moveHandlePlacement({ top, viewportTop = 0, clearance = 10 }) {
+  const availableTopSpace = finiteNumber(top) - finiteNumber(viewportTop);
+  return availableTopSpace < Math.max(0, finiteNumber(clearance, 10)) ? "inside" : "outside";
+}
+
 export function positionStart({
   position,
   computedValue,
