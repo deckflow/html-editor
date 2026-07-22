@@ -1,4 +1,4 @@
-name: Publish to npm
+name: Publish to GitHub Packages
 
 on:
   release:
@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write
+  packages: write
 
 jobs:
   publish:
@@ -22,7 +22,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@deckflow'
           package-manager-cache: false
 
       - name: Install dependencies
@@ -49,9 +50,6 @@ jobs:
         run: npm pack --dry-run
 
       - name: Publish package
-        run: npm publish --access public --provenance
+        run: npm publish
         env:
-          # Used only to bootstrap the first release. Once npm Trusted
-          # Publishing is configured, OIDC takes precedence and this secret
-          # can be deleted from GitHub and revoked on npmjs.com.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
