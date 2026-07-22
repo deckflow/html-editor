@@ -10,7 +10,7 @@ patches. The server binds to `127.0.0.1` and keeps backups under
 Run directly from a package registry:
 
 ```bash
-npx @hyperdeck/html-editor ./index.html
+npx @deckflow/html-editor ./index.html
 ```
 
 The package exposes `htmleditor` as its executable. After a global install, the
@@ -19,7 +19,7 @@ same editor can be started with `htmleditor ./index.html`.
 Pass a directory to open it as an HTML workspace:
 
 ```bash
-npx @hyperdeck/html-editor ./site
+npx @deckflow/html-editor ./site
 ```
 
 The editor prefers `index.html` as the initial page, then falls back to the first
@@ -38,7 +38,7 @@ The CLI opens the browser automatically and selects an available port. Pass a
 fixed port or keep the browser closed with:
 
 ```bash
-npx @hyperdeck/html-editor ./site/index.html --port 4567 --no-open
+npx @deckflow/html-editor ./site/index.html --port 4567 --no-open
 ```
 
 `Choose HTML` uses the local CLI process to open the operating system's file
@@ -51,7 +51,7 @@ project directory acting as the filesystem boundary. To use shared assets above
 the HTML directory, provide a common parent explicitly:
 
 ```bash
-npx @hyperdeck/html-editor ./site/pages/index.html --root ./site
+npx @deckflow/html-editor ./site/pages/index.html --root ./site
 ```
 
 This supports arbitrary `./`, `../`, and root-relative resource paths and does
@@ -80,7 +80,7 @@ npm publish
 The server can also be embedded in another Node.js application:
 
 ```js
-import { createEditorServer } from "@hyperdeck/html-editor";
+import { createEditorServer } from "@deckflow/html-editor";
 
 const editor = await createEditorServer({
   input: "./site",

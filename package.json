@@ -1,5 +1,5 @@
 {
-  "name": "@hyperdeck/html-editor",
+  "name": "@deckflow/html-editor",
   "version": "0.1.0",
   "description": "Run a local visual editor for HTML files",
   "type": "module",
