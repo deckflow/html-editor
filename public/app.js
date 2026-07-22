@@ -23,6 +23,7 @@ import { dragTargetAtPoint } from "./pointerIntent.js";
 import { activateEmbeddedPreview } from "./previewLifecycle.js";
 import {
   injectPreviewBase,
+  PREVIEW_BASE_ATTRIBUTE,
   previewSandboxForMode,
 } from "./previewHtml.js";
 import { buildSelectionSnapshot } from "./selectionSnapshot.js";

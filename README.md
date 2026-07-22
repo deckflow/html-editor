@@ -22,19 +22,47 @@ Then run the package directly:
 npx @deckflow/html-editor ./index.html
 ```
 
-The package exposes `htmleditor` as its executable. After a global install, the
-same editor can be started with `htmleditor ./index.html`.
+## Global CLI
 
-Pass a directory to open it as an HTML workspace:
+The package exposes `htmleditor` as its executable. Install it globally when you
+want to run the editor from any local project:
 
 ```bash
+npm install -g @deckflow/html-editor
+```
+
+Then start the editor with an HTML file:
+
+```bash
+htmleditor ./index.html
+```
+
+Or open a whole directory as a workspace:
+
+```bash
+htmleditor ./site
+```
+
+Useful flags:
+
+```bash
+htmleditor ./site/index.html --port 4567
+htmleditor ./site/index.html --no-open
+htmleditor ./site/pages/page-001.html --root ./site
+```
+
+Without a global install, use `npx` with the same arguments:
+
+```bash
+npx @deckflow/html-editor ./index.html
 npx @deckflow/html-editor ./site
 ```
 
-The editor prefers `index.html` as the initial page, then falls back to the first
-HTML file in lexical order. A searchable sidebar lists every `.html` file under
-the directory as a flat relative-path list, so nested pages can be switched
-without restarting the CLI. Hidden directories and `node_modules` are skipped.
+In directory mode, the editor prefers `index.html` as the initial page, then
+falls back to the first HTML file in lexical order. A searchable sidebar lists
+every `.html` file under the directory as a flat relative-path list, so nested
+pages can be switched without restarting the CLI. Hidden directories and
+`node_modules` are skipped.
 
 For local development in this repository:
 
