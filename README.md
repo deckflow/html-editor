@@ -68,12 +68,43 @@ adjustments. File switching and Reload flush pending changes before continuing.
 
 ## Publishing
 
-Authenticate with npm and publish the public scoped package:
+Publishing is handled by [`.github/workflows/publish.yml`](.github/workflows/publish.yml).
+Creating a GitHub Release runs the test suite, checks the package contents, and
+publishes the matching version to npmjs.com. A release tagged `v0.1.1` (or
+`0.1.1`) must therefore contain `"version": "0.1.1"` in `package.json`.
+
+The first release needs a one-time bootstrap because npm cannot attach a trusted
+publisher until the package exists:
+
+1. Make sure the `deckflow` organization exists on npmjs.com and your npm user
+   can publish public packages under the `@deckflow` scope.
+2. Create a granular npm access token with publish access, then add it to the
+   GitHub repository as an Actions secret named `NPM_TOKEN`.
+3. Update the version, push it, and create a GitHub Release with the matching
+   tag. The workflow publishes the package; no local `npm publish` is needed.
+
+After the first release, open the package settings on npmjs.com and configure a
+GitHub Actions trusted publisher with these values:
+
+```text
+Organization or user: deckflow
+Repository: html-editor
+Workflow filename: publish.yml
+Environment: (leave empty)
+Allowed action: npm publish
+```
+
+Once trusted publishing works, delete the `NPM_TOKEN` GitHub secret and revoke
+the npm token. Future releases authenticate through short-lived GitHub OIDC
+credentials. A normal patch release can then be prepared with:
 
 ```bash
-npm login --registry https://registry.npmjs.org
-npm publish
+npm version patch
+git push origin main --follow-tags
 ```
+
+Finally, publish a GitHub Release for that tag in the repository UI. Publishing
+the Release, rather than merely pushing the tag, starts the npm workflow.
 
 ## Package API
 
