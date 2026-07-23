@@ -5,6 +5,7 @@ import {
   createSnapTarget,
   createViewportSnapTarget,
   keepGuidesAfterBounds,
+  resolveResizeSnap,
   resolveSnapAdjustment,
 } from "../public/snapEngine.js";
 
@@ -102,6 +103,45 @@ test("disables snapping while Alt is held", () => {
   });
 
   assert.deepEqual(result, { dx: 78, dy: 78, guides: [] });
+});
+
+test("snaps only the actively resized right edge", () => {
+  const result = resolveResizeSnap({
+    side: "right",
+    movingRect: rect(20, 40, 100, 60),
+    proposedDelta: 77,
+    targets: [createSnapTarget(rect(200, 10, 80, 40), "peer")],
+  });
+
+  assert.equal(result.delta, 80);
+  assert.deepEqual(result.guides.map(({ axis, position }) => ({ axis, position })), [
+    { axis: "x", position: 200 },
+  ]);
+});
+
+test("snaps the resized left edge while the right edge stays fixed", () => {
+  const result = resolveResizeSnap({
+    side: "left",
+    movingRect: rect(100, 40, 120, 60),
+    proposedDelta: -37,
+    targets: [createSnapTarget(rect(60, 10, 20, 40), "peer")],
+  });
+
+  assert.equal(result.delta, -40);
+  assert.ok(result.guides.some((guide) => guide.axis === "x" && guide.position === 60));
+});
+
+test("disables resize snapping while Alt is held", () => {
+  assert.deepEqual(
+    resolveResizeSnap({
+      side: "right",
+      movingRect: rect(0, 0, 100, 40),
+      proposedDelta: 97,
+      targets: [createSnapTarget(rect(200, 0, 20, 20), "peer")],
+      disabled: true,
+    }),
+    { delta: 97, guides: [] },
+  );
 });
 
 test("suppresses an ambiguous equal-distance snap", () => {

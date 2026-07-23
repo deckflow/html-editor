@@ -69,6 +69,7 @@ test("server exposes the selected project and initial HTML on an available port"
   const editorScript = await fetch(`${editor.url}/__local-editor__/app.js`);
   assert.equal(editorScript.status, 200);
   assert.match(editorScript.headers.get("content-type"), /^text\/javascript/);
+  assert.equal(editorScript.headers.get("cache-control"), "no-store");
 
   const escapedAsset = await fetch(`${editor.url}/project-assets/%2e%2e/package.json`);
   assert.equal(escapedAsset.status, 404);

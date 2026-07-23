@@ -2,7 +2,7 @@ import {
   isEditableMixedTextRoot,
   isEditableTextRoot,
   resolveEditableTextTarget,
-} from "./textFieldModel.js";
+} from "./textFieldModel.js?v=editor-interactions-v4";
 
 export function applyInlineEditAttributes(el, { preserveMarkup = false } = {}) {
   el.setAttribute("contenteditable", preserveMarkup ? "true" : "plaintext-only");
@@ -156,4 +156,4 @@ export {
   isEditableMixedTextRoot,
   isEditableTextRoot,
   resolveEditableTextTarget,
-} from "./textFieldModel.js";
+} from "./textFieldModel.js?v=editor-interactions-v4";

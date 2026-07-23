@@ -81,17 +81,19 @@ function readBody(req) {
   });
 }
 
-function serveFile(res, absPath) {
+function serveFile(res, absPath, { cacheControl } = {}) {
   if (!existsSync(absPath)) {
     res.writeHead(404);
     res.end("Not found");
     return;
   }
   const content = readFileSync(absPath);
-  res.writeHead(200, {
+  const headers = {
     "content-type": mimeTypes[extname(absPath).toLowerCase()] || "application/octet-stream",
     "content-length": content.length,
-  });
+  };
+  if (cacheControl) headers["cache-control"] = cacheControl;
+  res.writeHead(200, headers);
   res.end(content);
 }
 
@@ -545,7 +547,10 @@ export async function createEditorServer({
         res.end("Forbidden");
         return;
       }
-      serveFile(res, absPublicPath);
+      // Editor code changes frequently during local development. Stale ES
+      // modules keep their old event handlers alive even after the CLI server
+      // restarts, so editor-owned assets must always be fetched again.
+      serveFile(res, absPublicPath, { cacheControl: "no-store" });
       return;
     }
 

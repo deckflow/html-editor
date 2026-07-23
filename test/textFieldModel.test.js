@@ -26,7 +26,13 @@ function element(tagName, children = [], attributes = {}) {
     hasAttribute(name) {
       return attrs.has(name);
     },
-    querySelector() {
+    querySelector(selector) {
+      if (selector !== "[data-local-text-key]") return null;
+      for (const child of this.children) {
+        if (child.hasAttribute?.("data-local-text-key")) return child;
+        const nested = child.querySelector?.(selector);
+        if (nested) return nested;
+      }
       return null;
     },
   };
@@ -51,6 +57,19 @@ test("keeps a structural container out while resolving its text child", () => {
 
   assert.equal(resolveEditableTextTarget(section), null);
   assert.equal(resolveEditableTextTarget(heading), heading);
+});
+
+test("does not promote a layout ancestor because it contains a generated text field", () => {
+  const index = element("span", [text("01")], { "data-local-text-key": "index" });
+  const content = element("div", [element("strong", [text("Title")])]);
+  const firstStep = element("div", [index, content, element("span", [text("AI")])]);
+  const secondStep = element("div", [element("span", [text("02")]), element("div", [text("Body")])]);
+  const flow = element("div", [firstStep, secondStep]);
+  const section = element("section", [flow, element("aside", [text("Boundary")])]);
+  const main = element("main", [section]);
+
+  assert.equal(main.querySelector("[data-local-text-key]"), index);
+  assert.equal(resolveEditableTextTarget(index), index);
 });
 
 test("models footer mixed content as stable text fields", () => {

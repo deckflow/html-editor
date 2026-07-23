@@ -5,8 +5,9 @@ import {
   createSnapTarget,
   createViewportSnapTarget,
   keepGuidesAfterBounds,
+  resolveResizeSnap,
   resolveSnapAdjustment,
-} from "./snapEngine.js";
+} from "./snapEngine.js?v=editor-interactions-v3";
 import {
   createUniqueCopyId,
   floatingPosition,
@@ -801,13 +802,15 @@ export function createCanvasTextEditor({
     });
     const wasStatic = computed.position === "static";
     const wasInline = computed.display === "inline";
+    const snapTargets = collectMoveSnapTargets(doc, win, selected, rect);
+    const movingRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     const maxWidth = resizeMaxWidthForViewport({
       side,
       startWidth,
       rectLeft: rect.left,
       rectRight: rect.right,
       viewportWidth: win.innerWidth,
-      margin: 4,
+      margin: 0,
     });
     if (side === "left" && wasStatic) selected.style.position = "relative";
     if (wasInline) selected.style.display = "inline-block";
@@ -819,18 +822,45 @@ export function createCanvasTextEditor({
     let latest = { width: startWidth, left: startLeft };
 
     const move = (moveEvent) => {
-      latest = resizeFromHandle({
+      const raw = resizeFromHandle({
         side,
         startWidth,
         startLeft,
         deltaX: moveEvent.clientX - startX,
         maxWidth,
       });
+      const proposedEdgeDelta = side === "left"
+        ? raw.left - startLeft
+        : raw.width - startWidth;
+      const snapped = resolveResizeSnap({
+        side,
+        movingRect,
+        proposedDelta: proposedEdgeDelta,
+        targets: snapTargets,
+        threshold: SNAP_THRESHOLD_PX,
+        disabled: moveEvent.altKey,
+      });
+      latest = resizeFromHandle({
+        side,
+        startWidth,
+        startLeft,
+        deltaX: snapped.delta,
+        maxWidth,
+      });
+      const finalEdgeDelta = side === "left"
+        ? latest.left - startLeft
+        : latest.width - startWidth;
+      renderSnapGuides(keepGuidesAfterBounds({
+        guides: snapped.guides,
+        snappedDx: snapped.delta,
+        finalDx: finalEdgeDelta,
+      }));
       selected.style.width = `${latest.width}px`;
       if (side === "left") selected.style.left = `${latest.left}px`;
       refresh();
     };
     const finish = () => {
+      clearSnapGuides();
       listenerTarget.removeEventListener("pointermove", move);
       listenerTarget.removeEventListener("pointerup", finish);
       listenerTarget.removeEventListener("pointercancel", finish);

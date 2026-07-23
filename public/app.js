@@ -13,13 +13,13 @@ import {
   shouldCancelInlineEdit,
   shouldCommitInlineEdit,
   shouldEnsureFixedWidthWrap,
-} from "./inlineEdit.js";
-import { createCanvasTextEditor } from "./canvasTextEditor.js";
+} from "./inlineEdit.js?v=editor-interactions-v4";
+import { createCanvasTextEditor } from "./canvasTextEditor.js?v=editor-interactions-v3";
 import { createAutoSaveController } from "./autoSaveController.js";
 import { positionStart } from "./canvasEditorMath.js";
 import { createEditorHistory } from "./editorHistory.js";
 import { appendStructuralPatch, appendStylePatch } from "./patchQueue.js";
-import { dragTargetAtPoint } from "./pointerIntent.js";
+import { dragTargetAtPoint } from "./pointerIntent.js?v=editor-interactions-v3";
 import { activateEmbeddedPreview } from "./previewLifecycle.js";
 import {
   injectPreviewBase,
@@ -31,7 +31,7 @@ import {
   collectEditableTextFields,
   planTextFieldContentOperations,
   textStructureSignature,
-} from "./textFieldModel.js";
+} from "./textFieldModel.js?v=editor-interactions-v4";
 
 // state 保存编辑器运行时状态；真正的 HTML 内容仍然在 iframe 文档里。
 const state = {
@@ -795,7 +795,6 @@ function injectEditorLayer() {
     y: event.clientY,
     selection: doc.defaultView.getSelection(),
     inlineEditingElement: state.inlineEditingElement,
-    selectedElement: selectedElement(),
   });
 
   const onPointerMove = (event) => {

@@ -41,15 +41,14 @@ export function dragTargetAtPoint({
   y,
   selection = null,
   inlineEditingElement = null,
-  selectedElement = null,
 }) {
   if (inlineEditingElement || (selection && !selection.isCollapsed)) return null;
   const element = target?.nodeType === 1 ? target : target?.parentElement;
   if (!element || NON_CANVAS_TAGS.has(element.tagName)) return null;
   if (element.closest?.("[data-local-editor-ui]")) return null;
-  const selectedContainsTarget = selectedElement
-    && selectedElement.isConnected !== false
-    && (selectedElement === element || selectedElement.contains?.(element));
-  const candidate = selectedContainsTarget ? selectedElement : element;
-  return pointHitsRenderedText(candidate, x, y) ? null : candidate;
+  // event.target is the most specific rendered box under the pointer. Keeping a
+  // previously selected ancestor here makes every nested box impossible to
+  // select, resize, or move. The ancestor remains available through its own
+  // uncovered area and the editor's dedicated move handle.
+  return pointHitsRenderedText(element, x, y) ? null : element;
 }

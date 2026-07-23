@@ -134,6 +134,40 @@ export function resolveSnapAdjustment({
   };
 }
 
+export function resolveResizeSnap({
+  side,
+  movingRect,
+  proposedDelta,
+  targets,
+  threshold = SNAP_THRESHOLD_PX,
+  disabled = false,
+}) {
+  const delta = finiteNumber(proposedDelta);
+  const snapThreshold = Math.max(0, finiteNumber(threshold));
+  if (
+    disabled
+    || snapThreshold === 0
+    || !targets?.length
+    || (side !== "left" && side !== "right")
+  ) {
+    return { delta, guides: [] };
+  }
+
+  const edges = rectEdges(movingRect);
+  const movingPosition = (side === "left" ? edges.left : edges.right) + delta;
+  const bestX = pickBest(collectAxisCandidates(
+    [movingPosition],
+    targets,
+    ["left", "centerX", "right"],
+    snapThreshold,
+  ));
+
+  return {
+    delta: delta + (bestX?.adjustment || 0),
+    guides: guidesForAxis("x", bestX),
+  };
+}
+
 export function keepGuidesAfterBounds({ guides, snappedDx, snappedDy, finalDx, finalDy }) {
   return (guides || []).filter((guide) =>
     guide.axis === "x"

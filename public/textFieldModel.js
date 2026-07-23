@@ -105,7 +105,6 @@ function isGeneratedTextFieldRoot(element) {
   const children = Array.from(element?.children || []);
   return children.length > 0 && children.every((child) =>
     child.hasAttribute?.("data-local-text-key")
-      || Boolean(child.querySelector?.("[data-local-text-key]"))
       || (tagNameOf(child) === "span"
         && (child.getAttributeNames?.() || []).every((name) =>
           ["style", "data-local-text-key"].includes(name.toLowerCase()))),

@@ -86,7 +86,7 @@ test("document roots and editor UI are never canvas drag targets", () => {
   assert.equal(dragTargetAtPoint({ target: ui, x: 1, y: 1 }), null);
 });
 
-test("an already selected ancestor remains the drag target over nested children", () => {
+test("a nested child remains selectable when its ancestor was already selected", () => {
   const selected = createElement();
   const child = createElement();
   selected.contains = (candidate) => candidate === child;
@@ -96,5 +96,5 @@ test("an already selected ancestor remains the drag target over nested children"
     selectedElement: selected,
     x: 180,
     y: 30,
-  }), selected);
+  }), child);
 });
