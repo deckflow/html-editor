@@ -57,6 +57,28 @@ export function resizeFromHandle({
   };
 }
 
+export function resizeMaxWidthForViewport({
+  side,
+  startWidth,
+  rectLeft,
+  rectRight,
+  viewportWidth,
+  margin = 4,
+}) {
+  const edge = Math.max(0, finiteNumber(margin, 4));
+  const availableWidth = side === "left"
+    ? finiteNumber(rectRight) - edge
+    : finiteNumber(viewportWidth) - finiteNumber(rectLeft) - edge;
+
+  // When the authored box already exceeds the visible viewport, treating the
+  // smaller available width as a maximum makes the first pointer move jump or
+  // appear frozen. Leave that axis unconstrained so both shrinking and growing
+  // continue from the actual rendered width.
+  return availableWidth >= finiteNumber(startWidth)
+    ? availableWidth
+    : Number.POSITIVE_INFINITY;
+}
+
 export function moveFromPointer({
   startLeft,
   startTop,
@@ -76,18 +98,34 @@ export function moveFromPointer({
     .every((value) => Number.isFinite(Number(value)));
   if (canBound) {
     const edge = Math.max(0, finiteNumber(margin, 4));
-    const visualLeft = clamp(
-      finiteNumber(startRectLeft) + appliedX,
-      edge,
-      finiteNumber(viewportWidth) - finiteNumber(width) - edge,
-    );
-    const visualTop = clamp(
-      finiteNumber(startRectTop) + appliedY,
-      edge,
-      finiteNumber(viewportHeight) - finiteNumber(height) - edge,
-    );
-    appliedX = visualLeft - finiteNumber(startRectLeft);
-    appliedY = visualTop - finiteNumber(startRectTop);
+    const viewport = {
+      width: finiteNumber(viewportWidth),
+      height: finiteNumber(viewportHeight),
+    };
+    const size = {
+      width: finiteNumber(width),
+      height: finiteNumber(height),
+    };
+
+    // A box larger than the viewport cannot satisfy both edge constraints.
+    // Keep that axis following the pointer instead of collapsing its range and
+    // pinning the element to zero while the snap guides continue to move.
+    if (size.width <= viewport.width - edge * 2) {
+      const visualLeft = clamp(
+        finiteNumber(startRectLeft) + appliedX,
+        edge,
+        viewport.width - size.width - edge,
+      );
+      appliedX = visualLeft - finiteNumber(startRectLeft);
+    }
+    if (size.height <= viewport.height - edge * 2) {
+      const visualTop = clamp(
+        finiteNumber(startRectTop) + appliedY,
+        edge,
+        viewport.height - size.height - edge,
+      );
+      appliedY = visualTop - finiteNumber(startRectTop);
+    }
   }
   return {
     left: finiteNumber(startLeft) + appliedX,

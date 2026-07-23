@@ -15,6 +15,7 @@ import {
   moveHandlePlacement,
   positionStart,
   resizeFromHandle,
+  resizeMaxWidthForViewport,
   toggleDecoration,
   toggleFontStyle,
   toggleFontWeight,
@@ -436,6 +437,7 @@ export function createCanvasTextEditor({
   onDelete = () => {},
   onSelectionChange = () => {},
   onTextRangeChange = () => {},
+  onInteractionStart = () => {},
   onMoveStart = () => {},
   onMoveEnd = () => {},
 }) {
@@ -662,6 +664,7 @@ export function createCanvasTextEditor({
     if (!selected) return;
     event.preventDefault();
     event.stopPropagation();
+    onInteractionStart(selected);
     const handle = captureTarget?.setPointerCapture ? captureTarget : event.currentTarget;
     handle?.setPointerCapture?.(event.pointerId);
     const listenerTarget = doc;
@@ -779,8 +782,10 @@ export function createCanvasTextEditor({
     if (!selected) return;
     event.preventDefault();
     event.stopPropagation();
+    onInteractionStart(selected);
     onBeforeChange();
     const handle = event.currentTarget;
+    const listenerTarget = doc;
     const side = handle.dataset.handle;
     handle.setPointerCapture(event.pointerId);
     const startX = event.clientX;
@@ -796,6 +801,14 @@ export function createCanvasTextEditor({
     });
     const wasStatic = computed.position === "static";
     const wasInline = computed.display === "inline";
+    const maxWidth = resizeMaxWidthForViewport({
+      side,
+      startWidth,
+      rectLeft: rect.left,
+      rectRight: rect.right,
+      viewportWidth: win.innerWidth,
+      margin: 4,
+    });
     if (side === "left" && wasStatic) selected.style.position = "relative";
     if (wasInline) selected.style.display = "inline-block";
     selected.style.boxSizing = "border-box";
@@ -811,16 +824,16 @@ export function createCanvasTextEditor({
         startWidth,
         startLeft,
         deltaX: moveEvent.clientX - startX,
-        maxWidth: side === "left" ? rect.right - 4 : win.innerWidth - rect.left - 4,
+        maxWidth,
       });
       selected.style.width = `${latest.width}px`;
       if (side === "left") selected.style.left = `${latest.left}px`;
       refresh();
     };
     const finish = () => {
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("pointerup", finish);
-      handle.removeEventListener("pointercancel", finish);
+      listenerTarget.removeEventListener("pointermove", move);
+      listenerTarget.removeEventListener("pointerup", finish);
+      listenerTarget.removeEventListener("pointercancel", finish);
       const changes = [
         { property: "box-sizing", value: "border-box" },
         { property: "max-width", value: "none" },
@@ -836,9 +849,9 @@ export function createCanvasTextEditor({
       onSelectionChange(selected);
       sync();
     };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", finish);
-    handle.addEventListener("pointercancel", finish);
+    listenerTarget.addEventListener("pointermove", move);
+    listenerTarget.addEventListener("pointerup", finish);
+    listenerTarget.addEventListener("pointercancel", finish);
   }
 
   root.querySelector('[data-handle="move"]').addEventListener("pointerdown", beginMove);

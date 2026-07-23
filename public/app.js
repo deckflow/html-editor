@@ -772,6 +772,9 @@ function injectEditorLayer() {
       const snapshot = refreshSelectionSnapshot(range);
       state.canvasEditor?.updateSelection(snapshot, range);
     },
+    onInteractionStart() {
+      stopInlineTextEdit({ commit: true });
+    },
     onMoveStart(element) {
       state.suppressPreviewClick = true;
       applyDragMarker(element, "dragging");

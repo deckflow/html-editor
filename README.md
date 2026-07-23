@@ -124,8 +124,8 @@ the Release, rather than merely pushing the tag, starts the package workflow.
 The current version can also be published manually from `main` with:
 
 ```bash
-gh workflow run publish.yml --ref main
-gh run watch
+npm run publish:github
+npm run publish:watch
 ```
 
 ## Package API

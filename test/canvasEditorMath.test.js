@@ -44,6 +44,45 @@ test("resize respects the available viewport width", () => {
   );
 });
 
+test("resize viewport limit keeps normal elements inside the visible area", () => {
+  assert.equal(
+    math.resizeMaxWidthForViewport({
+      side: "right",
+      startWidth: 200,
+      rectLeft: 50,
+      rectRight: 250,
+      viewportWidth: 320,
+      margin: 4,
+    }),
+    266,
+  );
+  assert.equal(
+    math.resizeMaxWidthForViewport({
+      side: "left",
+      startWidth: 200,
+      rectLeft: 50,
+      rectRight: 250,
+      viewportWidth: 320,
+      margin: 4,
+    }),
+    246,
+  );
+});
+
+test("resize viewport limit does not lock an already overflowing element", () => {
+  assert.equal(
+    math.resizeMaxWidthForViewport({
+      side: "right",
+      startWidth: 300,
+      rectLeft: 50,
+      rectRight: 350,
+      viewportWidth: 320,
+      margin: 4,
+    }),
+    Number.POSITIVE_INFINITY,
+  );
+});
+
 test("move applies pointer deltas to the starting position", () => {
   assert.equal(typeof math.moveFromPointer, "function");
   assert.deepEqual(
@@ -68,6 +107,25 @@ test("move keeps the visual element inside viewport margins", () => {
       margin: 4,
     }),
     { left: -6, top: 136 },
+  );
+});
+
+test("move keeps oversized elements following the pointer on unconstrainable axes", () => {
+  assert.deepEqual(
+    math.moveFromPointer({
+      startLeft: 98,
+      startTop: -32,
+      deltaX: 50,
+      deltaY: 25,
+      startRectLeft: 98,
+      startRectTop: 228,
+      width: 1050,
+      height: 700,
+      viewportWidth: 1012,
+      viewportHeight: 600,
+      margin: 0,
+    }),
+    { left: 148, top: -7 },
   );
 });
 

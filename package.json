@@ -37,6 +37,8 @@
     "start": "node ./bin/htmleditor.js ./samples/demo.html --no-open",
     "test": "node --test",
     "pack:check": "npm pack --dry-run",
+    "publish:github": "gh workflow run publish.yml --ref main",
+    "publish:watch": "gh run watch",
     "prepublishOnly": "npm test"
   },
   "engines": {
