@@ -1,6 +1,6 @@
 {
   "name": "@deckflow/html-editor",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Run a local visual editor for HTML files",
   "type": "module",
   "bin": {
