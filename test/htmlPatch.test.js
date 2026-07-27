@@ -3,6 +3,14 @@ import assert from "node:assert/strict";
 import { patchElementInHtml } from "../htmlPatch.js";
 import * as htmlPatchModule from "../htmlPatch.js";
 
+function tableTarget(sourceText) {
+  return {
+    selector: "table",
+    selectorIndex: 0,
+    originalText: sourceText,
+  };
+}
+
 test("patches text content by id without touching sibling text", () => {
   const source = '<main><h1 id="hero">Old</h1><p id="body">Keep</p></main>';
 
@@ -24,6 +32,121 @@ test("patches the requested selector index", () => {
 
   assert.equal(result.matched, true);
   assert.equal(result.html, '<ul><li class="item">One</li><li class="item">Changed</li></ul>');
+});
+
+test("inserts a blank table row while preserving row and cell presentation", () => {
+  const source = [
+    '<table class="pricing">',
+    '  <tbody>',
+    '    <tr id="plan-row" class="featured"><td id="name" style="color: red">Pro</td><td>$20</td></tr>',
+    "  </tbody>",
+    "</table>",
+  ].join("\n");
+
+  const result = patchElementInHtml(source, tableTarget("Pro$20"), [
+    { type: "table-insert-row", rowIndex: 0, position: "after" },
+  ]);
+
+  assert.equal(result.matched, true);
+  assert.equal(result.changed, true);
+  assert.equal(
+    result.html,
+    [
+      '<table class="pricing">',
+      '  <tbody>',
+      '    <tr id="plan-row" class="featured"><td id="name" style="color: red">Pro</td><td>$20</td></tr>',
+      '    <tr class="featured"><td style="color: red"></td><td></td></tr>',
+      "  </tbody>",
+      "</table>",
+    ].join("\n"),
+  );
+});
+
+test("deletes one table row without rewriting neighboring rows", () => {
+  const source = [
+    "<table><tbody>",
+    '  <tr><td class="key">A</td><td>1</td></tr>',
+    '  <tr><td class="key">B</td><td>2</td></tr>',
+    "</tbody></table>",
+  ].join("\n");
+
+  const result = patchElementInHtml(source, tableTarget("A1 B2"), [
+    { type: "table-delete-row", rowIndex: 0 },
+  ]);
+
+  assert.equal(result.matched, true);
+  assert.equal(result.html, [
+    "<table><tbody>",
+    '  <tr><td class="key">B</td><td>2</td></tr>',
+    "</tbody></table>",
+  ].join("\n"));
+});
+
+test("inserts a blank table column across header and body rows", () => {
+  const source = [
+    "<table>",
+    '  <thead><tr><th id="label">Name</th><th>Price</th></tr></thead>',
+    '  <tbody><tr><td class="name">Pro</td><td class="price">$20</td></tr></tbody>',
+    "</table>",
+  ].join("\n");
+
+  const result = patchElementInHtml(source, tableTarget("NamePrice Pro$20"), [
+    { type: "table-insert-column", columnIndex: 0, position: "after" },
+  ]);
+
+  assert.equal(result.matched, true);
+  assert.equal(
+    result.html,
+    [
+      "<table>",
+      '  <thead><tr><th id="label">Name</th><th></th><th>Price</th></tr></thead>',
+      '  <tbody><tr><td class="name">Pro</td><td class="name"></td><td class="price">$20</td></tr></tbody>',
+      "</table>",
+    ].join("\n"),
+  );
+});
+
+test("deletes one table column from every row", () => {
+  const source = "<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>";
+
+  const result = patchElementInHtml(source, tableTarget("AB12"), [
+    { type: "table-delete-column", columnIndex: 1 },
+  ]);
+
+  assert.equal(result.matched, true);
+  assert.equal(result.html, "<table><tr><th>A</th></tr><tr><td>1</td></tr></table>");
+});
+
+test("rejects structural editing for complex tables", () => {
+  const sources = [
+    '<table><tr><td colspan="2">Wide</td><td>Tail</td></tr></table>',
+    '<table><colgroup><col></colgroup><tr><td>A</td></tr></table>',
+    '<table><tr><td>A</td><td>B</td></tr><tr><td>C</td></tr></table>',
+  ];
+
+  for (const source of sources) {
+    const result = patchElementInHtml(source, { selector: "table", selectorIndex: 0 }, [
+      { type: "table-insert-row", rowIndex: 0, position: "after" },
+    ]);
+    assert.equal(result.matched, false);
+    assert.equal(result.changed, false);
+    assert.equal(result.html, source);
+  }
+});
+
+test("refuses to delete the final table row or column", () => {
+  const source = "<table><tr><td>Only</td></tr></table>";
+  const row = patchElementInHtml(source, tableTarget("Only"), [
+    { type: "table-delete-row", rowIndex: 0 },
+  ]);
+  const column = patchElementInHtml(source, tableTarget("Only"), [
+    { type: "table-delete-column", columnIndex: 0 },
+  ]);
+
+  assert.equal(row.matched, false);
+  assert.equal(column.matched, false);
+  assert.equal(row.html, source);
+  assert.equal(column.html, source);
 });
 
 test("prefers selector index over a duplicated id with identical text", () => {

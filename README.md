@@ -103,6 +103,26 @@ patches back to the selected local file automatically. Rapid changes are batched
 after 1.2 seconds of inactivity, with a 5 second maximum wait during continuous
 adjustments. File switching and Reload flush pending changes before continuing.
 
+## Table Editing
+
+Text inside table cells uses the same inline text and range-formatting tools as
+other page text. When no text range is active, selecting content inside a
+regular rectangular table replaces the element duplicate/delete menu with row
+and column actions:
+
+- insert a row above or below
+- insert a column to the left or right
+- delete the current row or column
+
+New rows and columns preserve the presentation attributes of the neighboring
+row or cell, start with empty content, and do not copy element IDs. The preview
+updates immediately and the same semantic operation is applied to the source
+HTML during auto-save.
+
+Structural editing is deliberately disabled for tables that use `rowspan`,
+`colspan`, `colgroup`, or inconsistent cell counts. Their cell text remains
+editable, but changing their grid safely requires a span-aware table model.
+
 ## Publishing
 
 Publishing is handled by [`.github/workflows/publish.yml`](.github/workflows/publish.yml).

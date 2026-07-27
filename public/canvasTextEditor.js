@@ -1,5 +1,6 @@
 import { cssColorToHex } from "./inlineEdit.js";
 import { applyRangeStylesAsTextFields } from "./textFieldFormatting.js";
+import { tableContextForElement } from "./tableEditing.js?v=table-editing-v1";
 import {
   SNAP_THRESHOLD_PX,
   createSnapTarget,
@@ -122,6 +123,7 @@ const overlayStyles = `
 
   .local-editor-toolbar,
   .local-editor-actions,
+  .local-editor-table-actions,
   .local-editor-spacing {
     position: fixed;
     z-index: 2;
@@ -154,8 +156,21 @@ const overlayStyles = `
     gap: 1px;
   }
 
+  .local-editor-table-actions {
+    max-width: calc(100vw - 16px);
+    min-height: 40px;
+    padding: 4px;
+    gap: 1px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+
+  .local-editor-table-actions::-webkit-scrollbar { display: none; }
+
   .local-editor-toolbar button,
   .local-editor-actions button,
+  .local-editor-table-actions button,
   .local-editor-toolbar input,
   .local-editor-spacing input {
     box-sizing: border-box;
@@ -163,7 +178,8 @@ const overlayStyles = `
   }
 
   .local-editor-tool,
-  .local-editor-action {
+  .local-editor-action,
+  .local-editor-table-action {
     display: grid;
     place-items: center;
     width: 32px;
@@ -181,6 +197,7 @@ const overlayStyles = `
 
   .local-editor-tool:hover,
   .local-editor-action:hover,
+  .local-editor-table-action:hover,
   .local-editor-tool.is-active {
     color: #ffffff;
     background: #343a40;
@@ -196,11 +213,37 @@ const overlayStyles = `
     background: rgba(199, 68, 53, 0.2);
   }
 
+  .local-editor-table-action[data-table-action$="delete"]:hover {
+    color: #ff9a8f;
+    background: rgba(199, 68, 53, 0.2);
+  }
+
+  .local-editor-table-action[data-table-action$="delete"]:not(:disabled) {
+    color: #f58f82;
+  }
+
+  .local-editor-table-action[data-table-action$="delete"] svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .local-editor-table-action:disabled,
+  .local-editor-table-action:disabled:hover {
+    color: #626b72;
+    background: transparent;
+    cursor: not-allowed;
+  }
+
   .local-editor-action svg,
+  .local-editor-table-action svg,
   .local-editor-tool svg {
     width: 16px;
     height: 16px;
     pointer-events: none;
+  }
+
+  .local-editor-box[data-table-selection="true"] .local-editor-handle {
+    display: none;
   }
 
   .local-editor-size {
@@ -413,6 +456,39 @@ function createUi(doc, runtimeId) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
       </button>
     </div>
+    <div class="local-editor-table-actions" data-local-editor-ui="true" aria-label="Table row and column actions">
+      <button class="local-editor-table-action" data-table-action="row-before" type="button" aria-label="Insert row above" title="Insert row above">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h16v10H4z"/><path d="M4 14h16M9 9v10M15 9v10M12 2v5M9.5 4.5 12 2l2.5 2.5"/></svg>
+      </button>
+      <button class="local-editor-table-action" data-table-action="row-after" type="button" aria-label="Insert row below" title="Insert row below">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v10H4z"/><path d="M4 10h16M9 5v10M15 5v10M12 22v-5M9.5 19.5 12 22l2.5-2.5"/></svg>
+      </button>
+      <button class="local-editor-table-action" data-table-action="row-delete" type="button" aria-label="Delete row" title="Delete row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="2.5" y="3.5" width="14" height="16" rx="1.5"/>
+          <path d="M2.5 9h14M2.5 14h14M7.2 3.5v16M11.8 3.5v16"/>
+          <path d="M3.5 11.5h12" stroke-width="3" opacity=".48"/>
+          <circle cx="18.5" cy="17.5" r="4.25" fill="currentColor" stroke="none"/>
+          <path d="M16.5 17.5h4" stroke="#171a1d" stroke-width="2"/>
+        </svg>
+      </button>
+      <span class="local-editor-divider" aria-hidden="true"></span>
+      <button class="local-editor-table-action" data-table-action="column-before" type="button" aria-label="Insert column left" title="Insert column left">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h10v16H9z"/><path d="M14 4v16M9 9h10M9 15h10M2 12h5M4.5 9.5 2 12l2.5 2.5"/></svg>
+      </button>
+      <button class="local-editor-table-action" data-table-action="column-after" type="button" aria-label="Insert column right" title="Insert column right">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h10v16H5z"/><path d="M10 4v16M5 9h10M5 15h10M22 12h-5M19.5 9.5 22 12l-2.5 2.5"/></svg>
+      </button>
+      <button class="local-editor-table-action" data-table-action="column-delete" type="button" aria-label="Delete column" title="Delete column">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="2.5" y="3.5" width="14" height="16" rx="1.5"/>
+          <path d="M2.5 9h14M2.5 14h14M7.2 3.5v16M11.8 3.5v16"/>
+          <path d="M9.5 4.5v14" stroke-width="3" opacity=".48"/>
+          <circle cx="18.5" cy="17.5" r="4.25" fill="currentColor" stroke="none"/>
+          <path d="M16.5 17.5h4" stroke="#171a1d" stroke-width="2"/>
+        </svg>
+      </button>
+    </div>
     <div class="local-editor-spacing" data-local-editor-ui="true" aria-label="Text spacing">
       <div class="local-editor-spacing-row">
         <label class="local-editor-spacing-label">Character spacing <input data-spacing-number="letter" type="number" min="-2" max="20" step="0.5" aria-label="Character spacing value"></label>
@@ -436,6 +512,7 @@ export function createCanvasTextEditor({
   onInlineHtmlChange = () => {},
   onDuplicate = () => {},
   onDelete = () => {},
+  onTableAction = () => {},
   onSelectionChange = () => {},
   onTextRangeChange = () => {},
   onInteractionStart = () => {},
@@ -447,6 +524,7 @@ export function createCanvasTextEditor({
   const box = root.querySelector(".local-editor-box");
   const toolbar = root.querySelector(".local-editor-toolbar");
   const actions = root.querySelector(".local-editor-actions");
+  const tableActions = root.querySelector(".local-editor-table-actions");
   const spacing = root.querySelector(".local-editor-spacing");
   const fontSizeInput = root.querySelector('[data-tool="font-size"]');
   const colorInput = root.querySelector('[data-tool="color"]');
@@ -531,6 +609,24 @@ export function createCanvasTextEditor({
     element.style.top = `${position.top}px`;
   }
 
+  function configureTableActions(context) {
+    for (const button of tableActions.querySelectorAll("[data-table-action]")) {
+      const action = button.dataset.tableAction;
+      const unavailable = !context.editable
+        || (action === "row-delete" && !context.canDeleteRow)
+        || (action === "column-delete" && !context.canDeleteColumn);
+      button.disabled = unavailable;
+      if (!context.editable) button.title = context.reason;
+      else if (action === "row-delete" && !context.canDeleteRow) {
+        button.title = "The final row cannot be deleted";
+      } else if (action === "column-delete" && !context.canDeleteColumn) {
+        button.title = "The final column cannot be deleted";
+      } else {
+        button.title = button.getAttribute("aria-label");
+      }
+    }
+  }
+
   function refresh() {
     if (!selected?.isConnected) {
       clear();
@@ -543,15 +639,26 @@ export function createCanvasTextEditor({
     box.style.width = `${rect.width}px`;
     box.style.height = `${rect.height}px`;
     box.dataset.moveHandlePlacement = moveHandlePlacement({ top: rect.top });
+    const tableContext = tableContextForElement(selected);
+    box.dataset.tableSelection = String(Boolean(tableContext));
 
     const hasTextRange = Boolean(activeRange && selectionSnapshot?.rangeStyle);
     if (hasTextRange) {
       show(actions, false);
+      show(tableActions, false);
       const rangeRect = activeRange.getBoundingClientRect();
       const anchorRect = rangeRect.width || rangeRect.height ? rangeRect : rect;
       placeNear(toolbar, anchorRect, "center");
+    } else if (tableContext) {
+      show(toolbar, false);
+      show(actions, false);
+      show(spacing, false);
+      spacingOpen = false;
+      configureTableActions(tableContext);
+      placeNear(tableActions, rect, "end");
     } else {
       show(toolbar, false);
+      show(tableActions, false);
       show(spacing, false);
       spacingOpen = false;
       placeNear(actions, rect, "end");
@@ -655,6 +762,7 @@ export function createCanvasTextEditor({
     show(box, false);
     show(toolbar, false);
     show(actions, false);
+    show(tableActions, false);
     show(spacing, false);
   }
 
@@ -662,7 +770,7 @@ export function createCanvasTextEditor({
     captureTarget = event.currentTarget,
     activationDistance = 0,
   } = {}) {
-    if (!selected) return;
+    if (!selected || tableContextForElement(selected)) return;
     event.preventDefault();
     event.stopPropagation();
     onInteractionStart(selected);
@@ -780,7 +888,7 @@ export function createCanvasTextEditor({
   }
 
   function beginResize(event) {
-    if (!selected) return;
+    if (!selected || tableContextForElement(selected)) return;
     event.preventDefault();
     event.stopPropagation();
     onInteractionStart(selected);
@@ -944,7 +1052,7 @@ export function createCanvasTextEditor({
   lineNumber.addEventListener("input", () => updateLine(lineNumber.value));
 
   function duplicateSelected() {
-    if (!selected) return;
+    if (!selected || tableContextForElement(selected)) return;
     onBeforeChange();
     const original = selected;
     const existingIds = new Set(
@@ -962,7 +1070,7 @@ export function createCanvasTextEditor({
   }
 
   function deleteSelected() {
-    if (!selected) return;
+    if (!selected || tableContextForElement(selected)) return;
     onBeforeChange();
     const element = selected;
     onDelete(element);
@@ -972,6 +1080,14 @@ export function createCanvasTextEditor({
 
   root.querySelector('[data-action="duplicate"]').addEventListener("click", duplicateSelected);
   root.querySelector('[data-action="delete"]').addEventListener("click", deleteSelected);
+  for (const button of tableActions.querySelectorAll("[data-table-action]")) {
+    button.addEventListener("click", () => {
+      const context = tableContextForElement(selected);
+      if (!context || button.disabled) return;
+      onBeforeChange();
+      onTableAction(button.dataset.tableAction, context);
+    });
+  }
 
   function updateTextSelection() {
     if (!selected?.isConnected) return;

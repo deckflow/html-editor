@@ -46,6 +46,9 @@ export function dragTargetAtPoint({
   const element = target?.nodeType === 1 ? target : target?.parentElement;
   if (!element || NON_CANVAS_TAGS.has(element.tagName)) return null;
   if (element.closest?.("[data-local-editor-ui]")) return null;
+  // A table cell is a semantic editing surface. Padding inside it must select
+  // the cell/its text instead of starting the generic box drag interaction.
+  if (element.closest?.("td, th")) return null;
   // event.target is the most specific rendered box under the pointer. Keeping a
   // previously selected ancestor here makes every nested box impossible to
   // select, resize, or move. The ancestor remains available through its own

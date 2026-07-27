@@ -6,7 +6,7 @@ import {
   pointInsideRect,
 } from "../public/pointerIntent.js";
 
-function createElement({ tagName = "DIV", textRects = [] } = {}) {
+function createElement({ tagName = "DIV", textRects = [], tableCell = false } = {}) {
   const textNode = { nodeType: 3, data: "Editable text", parentElement: null, rects: textRects };
   const ranges = [];
   const doc = {
@@ -39,6 +39,7 @@ function createElement({ tagName = "DIV", textRects = [] } = {}) {
     tagName,
     ownerDocument: doc,
     closest(selector) {
+      if (selector === "td, th" && tableCell) return this;
       return selector === "[data-local-editor-ui]" && this.editorUi ? this : null;
     },
   };
@@ -84,6 +85,11 @@ test("document roots and editor UI are never canvas drag targets", () => {
   const ui = createElement();
   ui.editorUi = true;
   assert.equal(dragTargetAtPoint({ target: ui, x: 1, y: 1 }), null);
+});
+
+test("table cell padding is reserved for semantic table editing", () => {
+  const cell = createElement({ tagName: "TD", tableCell: true });
+  assert.equal(dragTargetAtPoint({ target: cell, x: 180, y: 30 }), null);
 });
 
 test("a nested child remains selectable when its ancestor was already selected", () => {

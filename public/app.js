@@ -14,12 +14,12 @@ import {
   shouldCommitInlineEdit,
   shouldEnsureFixedWidthWrap,
 } from "./inlineEdit.js?v=editor-interactions-v4";
-import { createCanvasTextEditor } from "./canvasTextEditor.js?v=editor-interactions-v3";
+import { createCanvasTextEditor } from "./canvasTextEditor.js?v=editor-interactions-v5";
 import { createAutoSaveController } from "./autoSaveController.js";
 import { positionStart } from "./canvasEditorMath.js";
 import { createEditorHistory } from "./editorHistory.js";
 import { appendStructuralPatch, appendStylePatch } from "./patchQueue.js";
-import { dragTargetAtPoint } from "./pointerIntent.js?v=editor-interactions-v3";
+import { dragTargetAtPoint } from "./pointerIntent.js?v=editor-interactions-v4";
 import { activateEmbeddedPreview } from "./previewLifecycle.js";
 import {
   injectPreviewBase,
@@ -32,6 +32,10 @@ import {
   planTextFieldContentOperations,
   textStructureSignature,
 } from "./textFieldModel.js?v=editor-interactions-v4";
+import {
+  applyTableAction,
+  tableContextForElement,
+} from "./tableEditing.js?v=table-editing-v1";
 
 // state 保存编辑器运行时状态；真正的 HTML 内容仍然在 iframe 文档里。
 const state = {
@@ -764,6 +768,27 @@ function injectEditorLayer() {
       markDirty();
       clearSelection();
     },
+    onTableAction(action, context) {
+      const tableTarget = targetForElement(context.table);
+      const result = applyTableAction(context, action);
+      if (!result.changed) {
+        setStatus(result.reason || "This table operation is unavailable", "error");
+        state.canvasEditor?.refresh();
+        return;
+      }
+
+      queueStructuralPatch(tableTarget, result.operation);
+      // A table operation changes its text fingerprint and DOM paths. Cache the
+      // new identity so a second operation in the same auto-save batch resolves
+      // against the source produced by the first operation.
+      state.elementTargets.set(
+        context.table,
+        createElementTarget(context.table, selectorFor(context.table)),
+      );
+      markDirty();
+      if (result.selectedCell?.isConnected) selectElement(result.selectedCell);
+      else clearSelection();
+    },
     onSelectionChange() {
       syncInspector();
     },
@@ -839,7 +864,8 @@ function injectEditorLayer() {
       applyDragMarker(dragTarget);
       return;
     }
-    const target = resolveEditableTextTarget(event.target);
+    const tableCell = event.target.closest?.("td, th");
+    const target = resolveEditableTextTarget(event.target) || tableCell;
     if (!target) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -950,18 +976,22 @@ function handleEditorShortcut(event) {
   }
   const element = selectedElement();
   if (!element || isFormControl(event.target)) return;
+  const tableContext = tableContextForElement(element);
 
   if (modifier && key === "d") {
     event.preventDefault();
+    if (tableContext) return;
     state.canvasEditor?.duplicateSelected();
     return;
   }
   if (event.key === "Delete" || event.key === "Backspace") {
     event.preventDefault();
+    if (tableContext) return;
     state.canvasEditor?.deleteSelected();
     return;
   }
   if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+    if (tableContext) return;
     event.preventDefault();
     recordHistory();
     const step = event.shiftKey ? 10 : 1;

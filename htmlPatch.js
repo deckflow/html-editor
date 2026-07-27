@@ -1,5 +1,6 @@
 import { parseDocument } from "htmlparser2";
 import { selectAll } from "css-select";
+import { patchTableElementHtml } from "./tablePatch.js";
 
 const allowedStyleProperties = new Set([
   "box-sizing",
@@ -474,6 +475,12 @@ function patchElementHtml(elementHtml, node, operations) {
       if (patched == null) return null;
       next = patched;
       continue;
+    }
+
+    if (String(operation.type || "").startsWith("table-")
+      && operations.length === 1
+      && node.name === "table") {
+      return patchTableElementHtml(next, node, operation);
     }
 
     // Structural operations replace the resolved source range and therefore

@@ -30,6 +30,7 @@
     "projectContext.js",
     "public",
     "server.js",
+    "tablePatch.js",
     "README.md"
   ],
   "scripts": {
