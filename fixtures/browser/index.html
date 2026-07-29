@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Embedded editor browser test</title>
+    <style>
+      body { margin: 0; display: grid; grid-template-columns: 1fr 1fr; height: 100vh; }
+      body.is-narrow { grid-template-columns: 320px 1fr; }
+      .host { min-width: 0; min-height: 0; border-right: 1px solid #d8dee4; }
+      .test-controls { position: fixed; right: 12px; bottom: 12px; z-index: 10; }
+    </style>
+  </head>
+  <body>
+    <div class="host" id="editor-a"></div>
+    <div class="host" id="editor-b"></div>
+    <div class="test-controls">
+      <button id="undo-a" type="button">Undo A</button>
+      <button id="redo-a" type="button">Redo A</button>
+      <button id="toggle-b" type="button">Toggle B</button>
+      <button id="resize-a" type="button">Resize A</button>
+    </div>
+    <script type="module" src="/.tmp/browser/editor-browser.js"></script>
+  </body>
+</html>
