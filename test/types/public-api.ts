@@ -26,6 +26,7 @@ const mounted = mountHtmlEditor({
   container,
   html: "<h1>Hello</h1>",
   readonly: true,
+  fit: "width",
   onChange({ html, patches: nextPatches, revision, reason }) {
     html.toUpperCase();
     nextPatches.length;
@@ -37,6 +38,9 @@ mounted.getHtml();
 mounted.setHtml("<h1>Next</h1>");
 mounted.setReadonly(false);
 mounted.readonly;
+mounted.setFitMode("contain");
+mounted.refreshFit();
+mounted.scale;
 mounted.destroy();
 
 const runtime = createHtmlEditorRuntime({ iframe, html: "<p>Runtime</p>" });

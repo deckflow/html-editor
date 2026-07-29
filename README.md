@@ -118,6 +118,7 @@ const editor = mountHtmlEditor({
   html: initialHtml,
   baseUrl: "https://example.com/project/",
   readonly: false,
+  fit: "width",
 
   async onChange({ html, patches, revision, reason }) {
     await saveHtml({ html, patches, revision, reason });
@@ -132,6 +133,8 @@ await editor.ready;
 editor.getHtml();
 editor.setHtml(nextHtml);
 editor.setReadonly(true);
+editor.setFitMode("contain");
+editor.refreshFit();
 editor.undo();
 editor.redo();
 await editor.flush();
@@ -154,6 +157,20 @@ menus, text editing, drag/resize behavior, or editor keyboard shortcuts. The
 host can switch modes without reloading the HTML by calling
 `editor.setReadonly(true | false)`. Host-controlled `setHtml()` remains
 available while the editor is read-only.
+
+Use `fit: "width"` when fixed-width HTML is wider than the embedded preview.
+The runtime gives the iframe a larger logical viewport and scales it back to the
+host width, without changing the source HTML:
+
+- `none` keeps the authored size and native overflow behavior.
+- `width` only shrinks overflowing content to the available width.
+- `contain` fits both width and height, which is useful for fixed-size slides.
+
+The runtime never enlarges content above `1x`. It recalculates after host
+resizes, committed edits, resource loads, and non-editor DOM changes.
+`editor.setFitMode(mode)` changes the behavior at runtime, while
+`editor.refreshFit()` lets a host request an immediate recalculation after an
+external layout change. The current ratio is available as `editor.scale`.
 
 The lower-level runtime is available when a host supplies its own iframe and UI:
 

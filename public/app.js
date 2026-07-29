@@ -18,6 +18,7 @@ import { createCanvasTextEditor } from "./canvasTextEditor.js?v=editor-interacti
 import { createAutoSaveController } from "./autoSaveController.js";
 import { positionStart } from "./canvasEditorMath.js";
 import { createEditorHistory } from "./editorHistory.js";
+import { createIframeFitController } from "./iframeFit.js?v=iframe-fit-v1";
 import { appendStructuralPatch, appendStylePatch } from "./patchQueue.js";
 import { dragTargetAtPoint } from "./pointerIntent.js?v=editor-interactions-v4";
 import { activateEmbeddedPreview } from "./previewLifecycle.js";
@@ -84,6 +85,7 @@ const els = {
   fileListEmpty: document.querySelector("#fileListEmpty"),
   toggleFilesBtn: document.querySelector("#toggleFilesBtn"),
   reloadBtn: document.querySelector("#reloadBtn"),
+  previewViewport: document.querySelector("#previewViewport"),
   preview: document.querySelector("#preview"),
   previewStatus: document.querySelector("#previewStatus"),
   status: document.querySelector("#status"),
@@ -99,6 +101,13 @@ const els = {
   clearBtn: document.querySelector("#clearBtn"),
   nudgeButtons: document.querySelectorAll("[data-nudge]"),
 };
+
+// Standalone 模式默认按宽度缩放预览。它只改变 iframe 的外部尺寸和
+// transform，不会向用户 HTML 注入样式，也不会参与局部 patch 保存。
+const previewFit = createIframeFitController({
+  iframe: els.preview,
+  mode: "width",
+});
 
 // 注入到 iframe 内部的辅助样式。节点引用和原属性值会被精确恢复，
 // 不依赖固定 id/全局 selector 清理，避免碰到用户同名标记。
@@ -1014,6 +1023,9 @@ function handleEditorShortcut(event) {
 function markDirty() {
   state.dirty = true;
   setStatus("Unsaved changes", "warn");
+  // Re-measure only for a real editor operation. Selection/focus attributes
+  // are filtered by iframeFit and therefore cannot make the scale drift.
+  previewFit.schedule();
   autoSave?.schedule();
 }
 

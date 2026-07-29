@@ -14,7 +14,7 @@ const firstHtml = `<!doctype html>
     <link rel="stylesheet" href="theme.css">
     <script>document.documentElement.dataset.scriptRan = "true";</script>
   </head>
-  <body>
+  <body style="box-sizing: border-box; width: 1200px">
     <h1 id="title">First editor</h1>
     <p id="copy">Editable copy</p>
   </body>
@@ -36,6 +36,7 @@ try {
     container: document.querySelector("#editor-a"),
     html: firstHtml,
     baseUrl: "/fixtures/browser/assets/",
+    fit: "width",
     onChange(change) {
       window.__editorChanges.push(change);
       document.body.dataset.changeCount = String(window.__editorChanges.length);
@@ -45,6 +46,10 @@ try {
     onError(error) {
       window.__editorErrors.push({ message: error.message, code: error.code });
       document.body.dataset.runtimeError = error.message;
+    },
+    onFitChange({ mode, scale }) {
+      document.body.dataset.editorAFit = mode;
+      document.body.dataset.editorAScale = String(scale);
     },
   });
 
@@ -71,6 +76,9 @@ try {
   document.querySelector("#toggle-b").addEventListener("click", () => {
     const readonly = window.editorB.setReadonly(!window.editorB.readonly);
     document.body.dataset.editorBReadonly = String(readonly);
+  });
+  document.querySelector("#resize-a").addEventListener("click", () => {
+    document.body.classList.toggle("is-narrow");
   });
 } catch (error) {
   document.body.dataset.startupError = error.stack || error.message;

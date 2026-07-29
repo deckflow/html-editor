@@ -25,6 +25,7 @@ import {
   textStructureSignature,
 } from "../../public/textFieldModel.js";
 import { applyTableAction, tableContextForElement } from "../../public/tableEditing.js";
+import { calculateFitScale, normalizeFitMode } from "./fit.js";
 
 const EDITOR_STYLE = `
   [data-local-editor-selected="true"] { cursor: text !important; }
@@ -147,21 +148,34 @@ export function createHtmlEditorRuntime({
   baseUrl = "",
   allowScripts = false,
   readonly = false,
+  fit = "none",
   historyLimit = 50,
   uiFactory = null,
   onChange = () => {},
   onError = () => {},
   onSelectionChange = () => {},
+  onFitChange = () => {},
 } = {}) {
   if (!iframe || String(iframe.tagName).toLowerCase() !== "iframe") {
     throw new TypeError("createHtmlEditorRuntime requires an iframe");
   }
 
+  const iframeStyleSnapshot = {
+    height: iframe.style.height,
+    transform: iframe.style.transform,
+    transformOrigin: iframe.style.transformOrigin,
+    width: iframe.style.width,
+  };
   const state = {
     source: String(html ?? ""),
     baseUrl: String(baseUrl || ""),
     allowScripts: Boolean(allowScripts),
     readonly: Boolean(readonly),
+    fitMode: normalizeFitMode(fit),
+    scale: 1,
+    fitFrame: null,
+    fitHostObserver: null,
+    fitContentCleanup: null,
     revision: 0,
     destroyed: false,
     selection: null,
@@ -191,6 +205,215 @@ export function createHtmlEditorRuntime({
     } catch {
       // A host error handler must not take down the editor.
     }
+  }
+
+  function reportFitChange() {
+    iframe.dataset.deckflowFit = state.fitMode;
+    iframe.dataset.deckflowScale = String(state.scale);
+    try {
+      onFitChange({ mode: state.fitMode, scale: state.scale });
+    } catch (error) {
+      reportError(error);
+    }
+  }
+
+  function restoreIframeFitStyles() {
+    iframe.style.width = iframeStyleSnapshot.width;
+    iframe.style.height = iframeStyleSnapshot.height;
+    iframe.style.transform = iframeStyleSnapshot.transform;
+    iframe.style.transformOrigin = iframeStyleSnapshot.transformOrigin;
+  }
+
+  function previewContentSize(document) {
+    const root = document.documentElement;
+    const body = document.body;
+    return {
+      width: Math.max(
+        root?.scrollWidth || 0,
+        root?.offsetWidth || 0,
+        body?.scrollWidth || 0,
+        body?.offsetWidth || 0,
+      ),
+      height: Math.max(
+        root?.scrollHeight || 0,
+        root?.offsetHeight || 0,
+        body?.scrollHeight || 0,
+        body?.offsetHeight || 0,
+      ),
+    };
+  }
+
+  function suppressFitRuntimeState(document) {
+    const runtimeNodes = [...document.querySelectorAll(
+      `[data-local-editor-ui], [data-local-editor-runtime="${runtimeId}"]`,
+    )];
+    const runtimeDisplays = runtimeNodes.map((node) => node.style.display);
+    const editingNodes = [...document.querySelectorAll("[data-local-editor-editing]")];
+    const editingAttributes = editingNodes.map((node) => ({
+      contenteditable: {
+        present: node.hasAttribute("contenteditable"),
+        value: node.getAttribute("contenteditable"),
+      },
+      spellcheck: {
+        present: node.hasAttribute("spellcheck"),
+        value: node.getAttribute("spellcheck"),
+      },
+      editing: {
+        present: node.hasAttribute("data-local-editor-editing"),
+        value: node.getAttribute("data-local-editor-editing"),
+      },
+    }));
+
+    runtimeNodes.forEach((node) => {
+      node.style.display = "none";
+    });
+    editingNodes.forEach((node) => {
+      node.removeAttribute("contenteditable");
+      node.removeAttribute("spellcheck");
+      node.removeAttribute("data-local-editor-editing");
+    });
+
+    return () => {
+      runtimeNodes.forEach((node, index) => {
+        node.style.display = runtimeDisplays[index];
+      });
+      editingNodes.forEach((node, index) => {
+        const attributes = {
+          contenteditable: editingAttributes[index].contenteditable,
+          spellcheck: editingAttributes[index].spellcheck,
+          "data-local-editor-editing": editingAttributes[index].editing,
+        };
+        for (const [name, snapshot] of Object.entries(attributes)) {
+          if (snapshot.present) node.setAttribute(name, snapshot.value ?? "");
+          else node.removeAttribute(name);
+        }
+      });
+    };
+  }
+
+  function applyFit() {
+    if (state.destroyed) return state.scale;
+    if (state.fitFrame != null) {
+      iframe.ownerDocument.defaultView?.cancelAnimationFrame(state.fitFrame);
+      state.fitFrame = null;
+    }
+
+    if (state.fitMode === "none") {
+      const changed = state.scale !== 1;
+      state.scale = 1;
+      restoreIframeFitStyles();
+      if (changed || iframe.dataset.deckflowFit !== "none") reportFitChange();
+      state.ui?.refresh();
+      return state.scale;
+    }
+
+    const container = iframe.parentElement;
+    const document = iframe.contentDocument;
+    if (!container || !document?.documentElement) return state.scale;
+    const availableWidth = Math.max(1, container.clientWidth);
+    const availableHeight = Math.max(1, container.clientHeight);
+
+    // Measure from the real host-sized viewport. Otherwise the inverse width
+    // from a previous scale becomes part of scrollWidth and locks the old ratio.
+    iframe.style.width = `${availableWidth}px`;
+    iframe.style.height = `${availableHeight}px`;
+    iframe.style.transform = "none";
+    iframe.style.transformOrigin = "top left";
+    void iframe.offsetWidth;
+
+    const restoreRuntimeState = suppressFitRuntimeState(document);
+    const content = previewContentSize(document);
+    restoreRuntimeState();
+    const nextScale = calculateFitScale({
+      mode: state.fitMode,
+      availableWidth,
+      availableHeight,
+      contentWidth: content.width,
+      contentHeight: content.height,
+    });
+    const changed = Math.abs(nextScale - state.scale) > 0.0001;
+    state.scale = nextScale;
+    iframe.style.width = `${availableWidth / nextScale}px`;
+    iframe.style.height = `${availableHeight / nextScale}px`;
+    iframe.style.transform = `scale(${nextScale})`;
+    iframe.style.transformOrigin = "top left";
+    if (changed || iframe.dataset.deckflowFit !== state.fitMode) reportFitChange();
+    state.ui?.refresh();
+    return state.scale;
+  }
+
+  function scheduleFit() {
+    if (state.destroyed || state.fitMode === "none" || state.fitFrame != null) return;
+    const win = iframe.ownerDocument.defaultView;
+    if (!win?.requestAnimationFrame) {
+      applyFit();
+      return;
+    }
+    state.fitFrame = win.requestAnimationFrame(() => {
+      state.fitFrame = null;
+      applyFit();
+    });
+  }
+
+  function isEditorRuntimeNode(node) {
+    const element = node?.nodeType === 1 ? node : node?.parentElement;
+    return Boolean(element?.closest?.(
+      `[data-local-editor-ui], [data-local-editor-runtime="${runtimeId}"]`,
+    ));
+  }
+
+  function mutationAffectsPreview(mutation) {
+    if (isEditorRuntimeNode(mutation.target)) return false;
+    if (mutation.type === "attributes") {
+      const name = String(mutation.attributeName || "");
+      if (name.startsWith("data-local-editor-")
+        || name === "contenteditable"
+        || name === "spellcheck") return false;
+    }
+    if (mutation.type === "childList") {
+      const changedNodes = [...mutation.addedNodes, ...mutation.removedNodes];
+      if (changedNodes.length > 0 && changedNodes.every(isEditorRuntimeNode)) return false;
+    }
+    return true;
+  }
+
+  function installFitSignals(document) {
+    state.fitContentCleanup?.();
+    state.fitContentCleanup = null;
+    if (state.fitMode === "none") return;
+
+    const MutationObserverCtor = document.defaultView?.MutationObserver;
+    const observer = MutationObserverCtor
+      ? new MutationObserverCtor((mutations) => {
+        if (!state.inlineElement && mutations.some(mutationAffectsPreview)) scheduleFit();
+      })
+      : null;
+    observer?.observe(document.documentElement, {
+      attributes: true,
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+    const handleResourceLoad = (event) => {
+      if (["IMG", "VIDEO", "AUDIO", "IFRAME"].includes(event.target?.tagName)) scheduleFit();
+    };
+    document.addEventListener("load", handleResourceLoad, true);
+    const loadSequence = state.loadSequence;
+    document.fonts?.ready?.then(() => {
+      if (loadSequence === state.loadSequence) scheduleFit();
+    });
+    state.fitContentCleanup = () => {
+      observer?.disconnect();
+      document.removeEventListener("load", handleResourceLoad, true);
+    };
+  }
+
+  function installHostFitObserver() {
+    const container = iframe.parentElement;
+    const ResizeObserverCtor = iframe.ownerDocument.defaultView?.ResizeObserver;
+    if (!container || !ResizeObserverCtor) return;
+    state.fitHostObserver = new ResizeObserverCtor(() => scheduleFit());
+    state.fitHostObserver.observe(container);
   }
 
   function notifyChange(patches, reason) {
@@ -358,6 +581,7 @@ export function createHtmlEditorRuntime({
     state.source = result.html;
     state.revision += 1;
     notifyChange(serializable, reason);
+    scheduleFit();
     return true;
   }
 
@@ -720,6 +944,8 @@ export function createHtmlEditorRuntime({
 
   function teardownPreview({ commit = false } = {}) {
     stopInlineEdit({ commit });
+    state.fitContentCleanup?.();
+    state.fitContentCleanup = null;
     state.eventCleanup?.();
     state.eventCleanup = null;
     state.ui?.destroy();
@@ -748,6 +974,8 @@ export function createHtmlEditorRuntime({
           return;
         }
         installEditorLayer();
+        installFitSignals(iframe.contentDocument);
+        applyFit();
         const restored = resolveTarget(iframe.contentDocument, restoreSelectionTarget);
         if (restored) selectElement(restored);
         resolve();
@@ -807,7 +1035,28 @@ export function createHtmlEditorRuntime({
     state.readonly = next;
     onSelectionChange(null);
     if (!state.readonly) installEditorLayer();
+    if (iframe.contentDocument?.documentElement) {
+      installFitSignals(iframe.contentDocument);
+      applyFit();
+    }
     return state.readonly;
+  }
+
+  function setFitMode(nextMode) {
+    const next = normalizeFitMode(nextMode);
+    if (state.destroyed) return state.fitMode;
+    state.fitMode = next;
+    state.fitContentCleanup?.();
+    state.fitContentCleanup = null;
+    if (iframe.contentDocument?.documentElement) {
+      installFitSignals(iframe.contentDocument);
+    }
+    applyFit();
+    return state.fitMode;
+  }
+
+  function refreshFit() {
+    return applyFit();
   }
 
   async function flush() {
@@ -822,6 +1071,16 @@ export function createHtmlEditorRuntime({
     state.destroyed = true;
     state.loadSequence += 1;
     teardownPreview();
+    state.fitHostObserver?.disconnect();
+    state.fitHostObserver = null;
+    if (state.fitFrame != null) {
+      iframe.ownerDocument.defaultView?.cancelAnimationFrame(state.fitFrame);
+      state.fitFrame = null;
+    }
+    state.scale = 1;
+    restoreIframeFitStyles();
+    delete iframe.dataset.deckflowFit;
+    delete iframe.dataset.deckflowScale;
     iframe.removeAttribute("srcdoc");
   }
 
@@ -841,17 +1100,26 @@ export function createHtmlEditorRuntime({
     get readonly() {
       return state.readonly;
     },
+    get fitMode() {
+      return state.fitMode;
+    },
+    get scale() {
+      return state.scale;
+    },
     getHtml() {
       return state.source;
     },
     setHtml,
     setReadonly,
+    setFitMode,
+    refreshFit,
     undo,
     redo,
     flush,
     destroy,
   };
 
+  installHostFitObserver();
   state.ready = reloadPreview(state.source, { resetHistory: true });
   return api;
 }

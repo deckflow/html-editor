@@ -16,15 +16,26 @@ export interface SelectionSnapshot {
   [key: string]: unknown;
 }
 
+export type HtmlEditorFitMode = "none" | "width" | "contain";
+
+export interface HtmlEditorFitChange {
+  mode: HtmlEditorFitMode;
+  scale: number;
+}
+
 export interface HtmlEditor {
   readonly ready: Promise<void>;
   readonly revision: number;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   readonly readonly: boolean;
+  readonly fitMode: HtmlEditorFitMode;
+  readonly scale: number;
   getHtml(): string;
   setHtml(html: string, options?: { baseUrl?: string }): Promise<void>;
   setReadonly(readonly: boolean): boolean;
+  setFitMode(mode: HtmlEditorFitMode | boolean): HtmlEditorFitMode;
+  refreshFit(): number;
   undo(): Promise<boolean>;
   redo(): Promise<boolean>;
   flush(): Promise<string>;
@@ -37,10 +48,12 @@ export interface HtmlEditorRuntimeOptions {
   baseUrl?: string;
   allowScripts?: boolean;
   readonly?: boolean;
+  fit?: HtmlEditorFitMode | boolean;
   historyLimit?: number;
   onChange?(change: HtmlEditorChange): void | Promise<void>;
   onError?(error: Error): void;
   onSelectionChange?(selection: SelectionSnapshot | null): void;
+  onFitChange?(change: HtmlEditorFitChange): void;
   uiFactory?(context: {
     document: Document;
     runtimeId: string;

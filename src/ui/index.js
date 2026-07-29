@@ -19,9 +19,11 @@ export function mountHtmlEditor({
   baseUrl = "",
   allowScripts = false,
   readonly = false,
+  fit = "none",
   onChange,
   onError,
   onSelectionChange,
+  onFitChange,
   className = "",
   title = "HTML editor preview",
   historyLimit = 50,
@@ -35,6 +37,8 @@ export function mountHtmlEditor({
   root.className = ["deckflow-html-editor", className].filter(Boolean).join(" ");
   root.setAttribute("data-deckflow-html-editor", "");
   root.dataset.readonly = String(Boolean(readonly));
+  root.dataset.fit = fit === true ? "width" : String(fit || "none");
+  root.dataset.scale = "1";
   root.style.cssText = [
     "position:relative",
     "width:100%",
@@ -65,14 +69,21 @@ export function mountHtmlEditor({
     baseUrl,
     allowScripts,
     readonly,
+    fit,
     historyLimit,
     uiFactory: createDefaultUi,
     onChange,
     onError,
     onSelectionChange,
+    onFitChange(detail) {
+      root.dataset.fit = detail.mode;
+      root.dataset.scale = String(detail.scale);
+      onFitChange?.(detail);
+    },
   });
   const runtimeDestroy = runtime.destroy;
   const runtimeSetReadonly = runtime.setReadonly;
+  const runtimeSetFitMode = runtime.setFitMode;
 
   Object.defineProperties(runtime, {
     element: { enumerable: true, value: root },
@@ -87,6 +98,12 @@ export function mountHtmlEditor({
   runtime.setReadonly = (nextReadonly) => {
     const next = runtimeSetReadonly(nextReadonly);
     root.dataset.readonly = String(next);
+    return next;
+  };
+  runtime.setFitMode = (nextMode) => {
+    const next = runtimeSetFitMode(nextMode);
+    root.dataset.fit = next;
+    root.dataset.scale = String(runtime.scale);
     return next;
   };
   return runtime;
