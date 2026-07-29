@@ -16,8 +16,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "registry": "https://npm.pkg.github.com",
-    "provenance": true
+    "registry": "https://npm.pkg.github.com"
   },
   "exports": {
     ".": {

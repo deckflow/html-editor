@@ -1,8 +1,7 @@
-name: Publish to npm
+name: Publish to GitHub Packages
 
-# Publishing a GitHub Release is the trigger — pushing a tag alone is not
-# enough, so a mistagged commit can still be corrected before anything
-# reaches the registry. npm publishes are effectively permanent.
+# Publishing a GitHub Release is the normal trigger. workflow_dispatch remains
+# available for retrying the current package version from main.
 on:
   release:
     types: [published]
@@ -10,9 +9,7 @@ on:
 
 permissions:
   contents: read
-  # Required for npm provenance: the published package carries a signed,
-  # verifiable link back to the commit and workflow that built it.
-  id-token: write
+  packages: write
 
 jobs:
   publish:
@@ -28,6 +25,7 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://npm.pkg.github.com'
+          scope: '@deckflow'
           package-manager-cache: false
 
       - name: Install dependencies
@@ -56,7 +54,4 @@ jobs:
       - name: Publish package
         run: npm publish
         env:
-          # An npm automation token with publish rights on the @deckflow scope.
-          # The built-in GITHUB_TOKEN cannot publish here — it only ever
-          # authenticated against GitHub Packages.
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
