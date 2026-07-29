@@ -103,6 +103,74 @@ patches back to the selected local file automatically. Rapid changes are batched
 after 1.2 seconds of inactivity, with a 5 second maximum wait during continuous
 adjustments. File switching and Reload flush pending changes before continuing.
 
+## Embed With An HTML String
+
+Applications that already own their persistence can use the editor without
+starting the local file server. The UI entry accepts a container and an HTML
+string; each completed edit returns updated source HTML and the exact patch
+batch that produced it:
+
+```js
+import { mountHtmlEditor } from "@deckflow/html-editor/ui";
+
+const editor = mountHtmlEditor({
+  container: document.querySelector("#editor"),
+  html: initialHtml,
+  baseUrl: "https://example.com/project/",
+  readonly: false,
+
+  async onChange({ html, patches, revision, reason }) {
+    await saveHtml({ html, patches, revision, reason });
+  },
+
+  onError(error) {
+    console.error(error);
+  },
+});
+
+await editor.ready;
+editor.getHtml();
+editor.setHtml(nextHtml);
+editor.setReadonly(true);
+editor.undo();
+editor.redo();
+await editor.flush();
+editor.destroy();
+```
+
+Give the container an explicit height; the embedded surface fills it and has a
+`320px` minimum height. `baseUrl` is injected into the preview as a temporary
+`<base>` element so relative CSS, images, fonts, media, and nested pages resolve
+correctly. It is never written into `getHtml()` or `onChange` output.
+
+Scripts are disabled in embedded previews by default. A host may set
+`allowScripts: true` for trusted HTML, but untrusted HTML should always keep the
+default sandbox. `setHtml()` clears selection and history, does not call
+`onChange`, and treats identical HTML as a no-op. `flush()` commits active text
+editing and waits for the host's latest `onChange` callback.
+
+Set `readonly: true` to render the preview without selection outlines, editing
+menus, text editing, drag/resize behavior, or editor keyboard shortcuts. The
+host can switch modes without reloading the HTML by calling
+`editor.setReadonly(true | false)`. Host-controlled `setHtml()` remains
+available while the editor is read-only.
+
+The lower-level runtime is available when a host supplies its own iframe and UI:
+
+```js
+import { createHtmlEditorRuntime } from "@deckflow/html-editor/editor";
+```
+
+Package layers are exposed independently:
+
+- `@deckflow/html-editor/core` contains targets, operations, source patching,
+  history, and text/table models.
+- `@deckflow/html-editor/editor` contains the serverless iframe runtime.
+- `@deckflow/html-editor/ui` contains `mountHtmlEditor()` and the default
+  floating editing controls.
+- `@deckflow/html-editor/server` contains local project and standalone servers.
+- `@deckflow/html-editor` remains the compatible standalone server entry.
+
 ## Table Editing
 
 Text inside table cells uses the same inline text and range-formatting tools as
@@ -150,7 +218,8 @@ npm run publish:watch
 
 ## Package API
 
-The server can also be embedded in another Node.js application:
+The complete standalone server can also be embedded in another Node.js
+application:
 
 ```js
 import { createEditorServer } from "@deckflow/html-editor";
@@ -162,4 +231,16 @@ const editor = await createEditorServer({
 });
 
 console.log(editor.url);
+```
+
+Use the headless project server when your Node application supplies its own UI:
+
+```js
+import { createProjectServer } from "@deckflow/html-editor/server";
+
+const project = await createProjectServer({
+  input: "./site",
+  root: ".",
+  port: 0,
+});
 ```

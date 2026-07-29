@@ -19,8 +19,31 @@
     "registry": "https://npm.pkg.github.com"
   },
   "exports": {
-    ".": "./server.js",
-    "./html-patch": "./htmlPatch.js"
+    ".": {
+      "types": "./types/server.d.ts",
+      "import": "./server.js"
+    },
+    "./core": {
+      "types": "./types/core.d.ts",
+      "import": "./src/core/index.js"
+    },
+    "./editor": {
+      "types": "./types/editor.d.ts",
+      "import": "./src/editor/index.js"
+    },
+    "./ui": {
+      "types": "./types/ui.d.ts",
+      "import": "./src/ui/index.js"
+    },
+    "./server": {
+      "types": "./types/server.d.ts",
+      "import": "./src/server/index.js"
+    },
+    "./html-patch": {
+      "types": "./types/core.d.ts",
+      "import": "./htmlPatch.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "bin",
@@ -30,13 +53,16 @@
     "projectContext.js",
     "public",
     "server.js",
+    "src",
     "tablePatch.js",
+    "types",
     "README.md"
   ],
   "scripts": {
     "dev": "node ./bin/htmleditor.js ./samples/demo.html --port 4177 --no-open",
     "start": "node ./bin/htmleditor.js ./samples/demo.html --no-open",
-    "test": "node --test",
+    "test": "node --test && npm run typecheck",
+    "typecheck": "tsc -p tsconfig.types.json",
     "pack:check": "npm pack --dry-run",
     "publish:github": "gh workflow run publish.yml --ref main",
     "publish:watch": "gh run watch",
@@ -55,5 +81,9 @@
   "dependencies": {
     "css-select": "^6.0.0",
     "htmlparser2": "^10.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "typescript": "^7.0.2"
   }
 }

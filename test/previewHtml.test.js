@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   injectPreviewBase,
   PREVIEW_BASE_ATTRIBUTE,
+  previewSandbox,
   previewSandboxForMode,
 } from "../public/previewHtml.js";
 
@@ -31,4 +32,10 @@ test("wraps an HTML fragment so relative assets still have a base", () => {
 test("allows scripts only for files served from the selected local project", () => {
   assert.equal(previewSandboxForMode("local"), "allow-same-origin allow-scripts");
   assert.equal(previewSandboxForMode("browser-file"), "allow-same-origin");
+});
+
+test("embedded previews disable scripts unless the host explicitly opts in", () => {
+  assert.equal(previewSandbox(), "allow-same-origin");
+  assert.equal(previewSandbox({ allowScripts: false }), "allow-same-origin");
+  assert.equal(previewSandbox({ allowScripts: true }), "allow-same-origin allow-scripts");
 });

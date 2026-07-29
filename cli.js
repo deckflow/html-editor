@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { extname, resolve } from "node:path";
 
-import { createEditorServer } from "./server.js";
+import { createStandaloneEditorServer } from "./src/standalone/index.js";
 
 export function parseCliArgs(argv) {
   const result = { help: false, input: null, open: true, port: 0, root: null };
@@ -96,7 +96,7 @@ export async function runCli(argv = process.argv.slice(2)) {
 
   const input = validateEditorInput(options.input);
 
-  const editor = await createEditorServer({
+  const editor = await createStandaloneEditorServer({
     input,
     root: options.root == null ? null : resolve(options.root),
     port: options.port,

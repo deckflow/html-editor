@@ -1,7 +1,11 @@
 export const PREVIEW_BASE_ATTRIBUTE = "data-local-editor-preview-base";
 
+export function previewSandbox({ allowScripts = false } = {}) {
+  return allowScripts ? "allow-same-origin allow-scripts" : "allow-same-origin";
+}
+
 export function previewSandboxForMode(mode) {
-  return mode === "local" ? "allow-same-origin allow-scripts" : "allow-same-origin";
+  return previewSandbox({ allowScripts: mode === "local" });
 }
 
 function escapeAttribute(value) {

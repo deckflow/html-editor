@@ -134,13 +134,14 @@ function startProjectWatcher(projectDir, onChange) {
  * the CLI. Port 0 asks the OS for an available port, which makes parallel local
  * editor sessions possible without a separate port-scanning dependency.
  */
-export async function createEditorServer({
+async function createServerInstance({
   input = ".",
   root = null,
   host = "127.0.0.1",
   port = 0,
   selectLocalHtmlFile = chooseLocalHtmlFile,
   selectLocalHtmlDirectory = chooseLocalHtmlDirectory,
+  serveEditorUi = true,
 } = {}) {
   if (host !== "127.0.0.1") throw new Error("The editor server only binds to 127.0.0.1");
 
@@ -526,19 +527,19 @@ export async function createEditorServer({
       return;
     }
 
-    if (url.pathname === "/" && req.method === "GET") {
+    if (serveEditorUi && url.pathname === "/" && req.method === "GET") {
       res.writeHead(302, { location: "/__local-editor__/" });
       res.end();
       return;
     }
 
-    if (url.pathname === "/__local-editor__" && req.method === "GET") {
+    if (serveEditorUi && url.pathname === "/__local-editor__" && req.method === "GET") {
       res.writeHead(302, { location: "/__local-editor__/" });
       res.end();
       return;
     }
 
-    if (url.pathname.startsWith("/__local-editor__/") && req.method === "GET") {
+    if (serveEditorUi && url.pathname.startsWith("/__local-editor__/") && req.method === "GET") {
       const suffix = url.pathname.slice("/__local-editor__".length);
       const publicPath = suffix === "/" ? "/index.html" : suffix;
       const absPublicPath = safeStaticPath(publicPath);
@@ -604,4 +605,19 @@ export async function createEditorServer({
       });
     },
   };
+}
+
+/**
+ * Starts only the local project APIs and asset server. This is useful when an
+ * application supplies its own UI but still wants the file/backup layer.
+ */
+export function createProjectServer(options = {}) {
+  return createServerInstance({ ...options, serveEditorUi: false });
+}
+
+/**
+ * Starts the complete standalone editor used by the htmleditor CLI.
+ */
+export function createEditorServer(options = {}) {
+  return createServerInstance({ ...options, serveEditorUi: true });
 }
