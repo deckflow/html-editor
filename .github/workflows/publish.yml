@@ -59,4 +59,4 @@ jobs:
           # An npm automation token with publish rights on the @deckflow scope.
           # The built-in GITHUB_TOKEN cannot publish here — it only ever
           # authenticated against GitHub Packages.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
