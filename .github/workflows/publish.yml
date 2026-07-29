@@ -1,4 +1,4 @@
-name: Publish to GitHub Packages
+name: Publish to npm
 
 # Publishing a GitHub Release is the normal trigger. workflow_dispatch remains
 # available for retrying the current package version from main.
@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   publish:
@@ -24,8 +23,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@deckflow'
+          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
       - name: Install dependencies
@@ -52,6 +50,6 @@ jobs:
         run: npm pack --dry-run
 
       - name: Publish package
-        run: npm publish
+        run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -7,16 +7,8 @@ patches. The server binds to `127.0.0.1` and keeps backups under
 
 ## Usage
 
-GitHub Packages requires authentication even when consuming a public package.
-Point the `@deckflow` scope at GitHub Packages and log in with a GitHub personal
-access token (classic) that has `read:packages` permission:
-
-```bash
-npm config set @deckflow:registry https://npm.pkg.github.com
-npm login --scope=@deckflow --auth-type=legacy --registry=https://npm.pkg.github.com
-```
-
-Then run the package directly:
+The package is public on npm and does not require registry authentication to
+install or run:
 
 ```bash
 npx @deckflow/html-editor ./index.html
@@ -212,12 +204,13 @@ editable, but changing their grid safely requires a span-aware table model.
 
 Publishing is handled by [`.github/workflows/publish.yml`](.github/workflows/publish.yml).
 Creating a GitHub Release runs the test suite, checks the package contents, and
-publishes the matching version to GitHub Packages. A
+publishes the matching version as a public package on npm. A
 release tagged `v0.1.1` (or `0.1.1`) must therefore contain `"version":
 "0.1.1"` in `package.json`.
 
-The workflow grants `packages: write` to the repository's built-in
-`GITHUB_TOKEN`, so no npm token or additional Actions secret is required.
+Add an npm automation or granular access token to the repository as the
+`NPM_TOKEN` Actions secret. The npm account behind that token must have publish
+permission for the `@deckflow` scope.
 
 A normal patch release can be prepared with:
 
@@ -231,7 +224,7 @@ the Release, rather than merely pushing the tag, starts the package workflow.
 The current version can also be published manually from `main` with:
 
 ```bash
-npm run publish:github
+npm run publish:npm
 npm run publish:watch
 ```
 
