@@ -1,5 +1,6 @@
 const FIT_MODES = new Set(["none", "width", "contain"]);
 const EDITOR_RUNTIME_ATTRIBUTES = new Set(["contenteditable", "spellcheck"]);
+const FIT_SETTLE_DELAY = 220;
 
 export function normalizeIframeFitMode(value) {
   if (value === true) return "width";
@@ -81,8 +82,10 @@ export function createIframeFitController({
     mode: normalizeIframeFitMode(mode),
     scale: 1,
     frame: null,
+    settleTimer: null,
     destroyed: false,
     hostObserver: null,
+    hostCleanup: null,
     contentObserver: null,
     contentCleanup: null,
   };
@@ -91,6 +94,12 @@ export function createIframeFitController({
     if (state.frame == null) return;
     iframe.ownerDocument.defaultView?.cancelAnimationFrame(state.frame);
     state.frame = null;
+  }
+
+  function cancelSettledFit() {
+    if (state.settleTimer == null) return;
+    iframe.ownerDocument.defaultView?.clearTimeout(state.settleTimer);
+    state.settleTimer = null;
   }
 
   function disconnectContent() {
@@ -219,6 +228,20 @@ export function createIframeFitController({
     });
   }
 
+  // ResizeObserver provides live updates, while the trailing refresh guarantees
+  // a final measurement after responsive grids and CSS transitions settle.
+  function scheduleSettled() {
+    if (state.destroyed || state.mode === "none") return;
+    schedule();
+    const view = iframe.ownerDocument.defaultView;
+    if (!view) return;
+    cancelSettledFit();
+    state.settleTimer = view.setTimeout(() => {
+      state.settleTimer = null;
+      refresh();
+    }, FIT_SETTLE_DELAY);
+  }
+
   function connectContent(document = iframe.contentDocument) {
     disconnectContent();
     if (state.destroyed || state.mode === "none" || !document?.documentElement) return;
@@ -251,6 +274,7 @@ export function createIframeFitController({
   function setMode(value) {
     state.mode = normalizeIframeFitMode(value);
     if (state.mode === "none") {
+      cancelSettledFit();
       disconnectContent();
       return refresh();
     }
@@ -262,8 +286,11 @@ export function createIframeFitController({
     if (state.destroyed) return;
     state.destroyed = true;
     cancelScheduledFit();
+    cancelSettledFit();
     disconnectContent();
     state.hostObserver?.disconnect();
+    state.hostCleanup?.();
+    state.hostCleanup = null;
     iframe.removeEventListener("load", onIframeLoad);
     restoreStyles();
     delete iframe.dataset.deckflowFit;
@@ -276,11 +303,18 @@ export function createIframeFitController({
   }
 
   iframe.addEventListener("load", onIframeLoad);
-  const ResizeObserverCtor = iframe.ownerDocument.defaultView?.ResizeObserver;
+  const hostView = iframe.ownerDocument.defaultView;
+  const ResizeObserverCtor = hostView?.ResizeObserver;
   if (ResizeObserverCtor && iframe.parentElement) {
-    state.hostObserver = new ResizeObserverCtor(schedule);
+    state.hostObserver = new ResizeObserverCtor(scheduleSettled);
     state.hostObserver.observe(iframe.parentElement);
   }
+  hostView?.addEventListener("resize", scheduleSettled, { passive: true });
+  hostView?.visualViewport?.addEventListener("resize", scheduleSettled, { passive: true });
+  state.hostCleanup = () => {
+    hostView?.removeEventListener("resize", scheduleSettled);
+    hostView?.visualViewport?.removeEventListener("resize", scheduleSettled);
+  };
 
   return {
     connectContent,

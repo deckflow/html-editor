@@ -18,7 +18,7 @@ import { createCanvasTextEditor } from "./canvasTextEditor.js?v=editor-interacti
 import { createAutoSaveController } from "./autoSaveController.js";
 import { positionStart } from "./canvasEditorMath.js";
 import { createEditorHistory } from "./editorHistory.js";
-import { createIframeFitController } from "./iframeFit.js?v=iframe-fit-v1";
+import { createIframeFitController } from "./iframeFit.js?v=iframe-fit-v2";
 import { appendStructuralPatch, appendStylePatch } from "./patchQueue.js";
 import { dragTargetAtPoint } from "./pointerIntent.js?v=editor-interactions-v4";
 import { activateEmbeddedPreview } from "./previewLifecycle.js";

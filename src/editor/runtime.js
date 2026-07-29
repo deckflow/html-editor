@@ -174,7 +174,9 @@ export function createHtmlEditorRuntime({
     fitMode: normalizeFitMode(fit),
     scale: 1,
     fitFrame: null,
+    fitSettleTimer: null,
     fitHostObserver: null,
+    fitHostCleanup: null,
     fitContentCleanup: null,
     revision: 0,
     destroyed: false,
@@ -355,6 +357,24 @@ export function createHtmlEditorRuntime({
     });
   }
 
+  function cancelSettledFit() {
+    if (state.fitSettleTimer == null) return;
+    iframe.ownerDocument.defaultView?.clearTimeout(state.fitSettleTimer);
+    state.fitSettleTimer = null;
+  }
+
+  function scheduleSettledFit() {
+    if (state.destroyed || state.fitMode === "none") return;
+    scheduleFit();
+    const win = iframe.ownerDocument.defaultView;
+    if (!win) return;
+    cancelSettledFit();
+    state.fitSettleTimer = win.setTimeout(() => {
+      state.fitSettleTimer = null;
+      applyFit();
+    }, 220);
+  }
+
   function isEditorRuntimeNode(node) {
     const element = node?.nodeType === 1 ? node : node?.parentElement;
     return Boolean(element?.closest?.(
@@ -410,10 +430,18 @@ export function createHtmlEditorRuntime({
 
   function installHostFitObserver() {
     const container = iframe.parentElement;
-    const ResizeObserverCtor = iframe.ownerDocument.defaultView?.ResizeObserver;
-    if (!container || !ResizeObserverCtor) return;
-    state.fitHostObserver = new ResizeObserverCtor(() => scheduleFit());
-    state.fitHostObserver.observe(container);
+    const win = iframe.ownerDocument.defaultView;
+    const ResizeObserverCtor = win?.ResizeObserver;
+    if (container && ResizeObserverCtor) {
+      state.fitHostObserver = new ResizeObserverCtor(scheduleSettledFit);
+      state.fitHostObserver.observe(container);
+    }
+    win?.addEventListener("resize", scheduleSettledFit, { passive: true });
+    win?.visualViewport?.addEventListener("resize", scheduleSettledFit, { passive: true });
+    state.fitHostCleanup = () => {
+      win?.removeEventListener("resize", scheduleSettledFit);
+      win?.visualViewport?.removeEventListener("resize", scheduleSettledFit);
+    };
   }
 
   function notifyChange(patches, reason) {
@@ -1046,6 +1074,7 @@ export function createHtmlEditorRuntime({
     const next = normalizeFitMode(nextMode);
     if (state.destroyed) return state.fitMode;
     state.fitMode = next;
+    if (next === "none") cancelSettledFit();
     state.fitContentCleanup?.();
     state.fitContentCleanup = null;
     if (iframe.contentDocument?.documentElement) {
@@ -1073,6 +1102,9 @@ export function createHtmlEditorRuntime({
     teardownPreview();
     state.fitHostObserver?.disconnect();
     state.fitHostObserver = null;
+    state.fitHostCleanup?.();
+    state.fitHostCleanup = null;
+    cancelSettledFit();
     if (state.fitFrame != null) {
       iframe.ownerDocument.defaultView?.cancelAnimationFrame(state.fitFrame);
       state.fitFrame = null;
