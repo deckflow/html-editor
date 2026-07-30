@@ -31,6 +31,18 @@ export function calculateIframeFitScale({
   return Math.max(minScale, Math.min(1, requestedScale));
 }
 
+export function calculateIframeOriginalSize({
+  availableWidth,
+  availableHeight,
+  contentWidth,
+  contentHeight,
+}) {
+  return {
+    width: Math.max(1, availableWidth || 0, contentWidth || 0),
+    height: Math.max(1, availableHeight || 0, contentHeight || 0),
+  };
+}
+
 function isEditorRuntimeNode(node) {
   const element = node?.nodeType === 1 ? node : node?.parentElement;
   return Boolean(element?.closest?.(
@@ -66,6 +78,7 @@ export function createIframeFitController({
   iframe,
   mode = "width",
   minScale = 0.01,
+  expandOriginal = false,
   onFitChange = null,
 } = {}) {
   if (!iframe || String(iframe.tagName).toLowerCase() !== "iframe") {
@@ -78,6 +91,7 @@ export function createIframeFitController({
     transform: iframe.style.transform,
     transformOrigin: iframe.style.transformOrigin,
   };
+  const initialHostOverflow = iframe.parentElement?.style.overflow || "";
   const state = {
     mode: normalizeIframeFitMode(mode),
     scale: 1,
@@ -111,10 +125,11 @@ export function createIframeFitController({
 
   function report(nextScale) {
     const changed = Math.abs(state.scale - nextScale) > 0.0001;
+    const modeChanged = iframe.dataset.deckflowFit !== state.mode;
     state.scale = nextScale;
     iframe.dataset.deckflowFit = state.mode;
     iframe.dataset.deckflowScale = String(nextScale);
-    if (changed) onFitChange?.({ mode: state.mode, scale: nextScale });
+    if (changed || modeChanged) onFitChange?.({ mode: state.mode, scale: nextScale });
   }
 
   function restoreStyles() {
@@ -127,19 +142,21 @@ export function createIframeFitController({
   function refresh() {
     cancelScheduledFit();
     if (state.destroyed) return state.scale;
-    if (state.mode === "none") {
+    const host = iframe.parentElement;
+    if (state.mode === "none" && !expandOriginal) {
+      if (host) host.style.overflow = initialHostOverflow;
       restoreStyles();
       report(1);
       return 1;
     }
 
-    const host = iframe.parentElement;
     const document = iframe.contentDocument;
     const root = document?.documentElement;
     const body = document?.body;
     const availableWidth = host?.clientWidth || 0;
     const availableHeight = host?.clientHeight || 0;
     if (!root || availableWidth <= 0 || availableHeight <= 0) return state.scale;
+    host.style.overflow = state.mode === "none" ? "auto" : initialHostOverflow;
 
     // Editor overlays are fixed runtime controls and must not influence the
     // authored page's intrinsic dimensions.
@@ -189,6 +206,32 @@ export function createIframeFitController({
       body?.scrollHeight || 0,
       body?.offsetHeight || 0,
     );
+    if (state.mode === "none") {
+      const size = calculateIframeOriginalSize({
+        availableWidth,
+        availableHeight,
+        contentWidth,
+        contentHeight,
+      });
+      iframe.style.width = `${size.width}px`;
+      iframe.style.height = `${size.height}px`;
+      iframe.style.transform = "none";
+      runtimeNodes.forEach((node, index) => {
+        node.style.display = runtimeDisplays[index];
+      });
+      editingNodes.forEach((node, index) => {
+        for (const [name, snapshot] of Object.entries({
+          contenteditable: editingAttributes[index].contenteditable,
+          spellcheck: editingAttributes[index].spellcheck,
+          "data-local-editor-editing": editingAttributes[index].editing,
+        })) {
+          if (snapshot.present) node.setAttribute(name, snapshot.value ?? "");
+          else node.removeAttribute(name);
+        }
+      });
+      report(1);
+      return 1;
+    }
     const scale = calculateIframeFitScale({
       mode: state.mode,
       availableWidth,
@@ -219,7 +262,9 @@ export function createIframeFitController({
   }
 
   function schedule() {
-    if (state.destroyed || state.mode === "none" || state.frame != null) return;
+    if (state.destroyed
+      || (state.mode === "none" && !expandOriginal)
+      || state.frame != null) return;
     const view = iframe.ownerDocument.defaultView;
     if (!view) return;
     state.frame = view.requestAnimationFrame(() => {
@@ -231,7 +276,7 @@ export function createIframeFitController({
   // ResizeObserver provides live updates, while the trailing refresh guarantees
   // a final measurement after responsive grids and CSS transitions settle.
   function scheduleSettled() {
-    if (state.destroyed || state.mode === "none") return;
+    if (state.destroyed || (state.mode === "none" && !expandOriginal)) return;
     schedule();
     const view = iframe.ownerDocument.defaultView;
     if (!view) return;
@@ -244,7 +289,9 @@ export function createIframeFitController({
 
   function connectContent(document = iframe.contentDocument) {
     disconnectContent();
-    if (state.destroyed || state.mode === "none" || !document?.documentElement) return;
+    if (state.destroyed
+      || (state.mode === "none" && !expandOriginal)
+      || !document?.documentElement) return;
 
     const view = document.defaultView;
     const MutationObserverCtor = view?.MutationObserver;
@@ -273,7 +320,7 @@ export function createIframeFitController({
 
   function setMode(value) {
     state.mode = normalizeIframeFitMode(value);
-    if (state.mode === "none") {
+    if (state.mode === "none" && !expandOriginal) {
       cancelSettledFit();
       disconnectContent();
       return refresh();
@@ -292,6 +339,7 @@ export function createIframeFitController({
     state.hostCleanup?.();
     state.hostCleanup = null;
     iframe.removeEventListener("load", onIframeLoad);
+    if (iframe.parentElement) iframe.parentElement.style.overflow = initialHostOverflow;
     restoreStyles();
     delete iframe.dataset.deckflowFit;
     delete iframe.dataset.deckflowScale;

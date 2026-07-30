@@ -15,6 +15,7 @@ import {
   lineHeightRatio,
   moveFromPointer,
   moveHandlePlacement,
+  normalizeEditorUiScale,
   positionStart,
   resizeFromHandle,
   resizeMaxWidthForViewport,
@@ -585,25 +586,50 @@ export function createCanvasTextEditor({
     }
   }
 
-  function placeFloating(element, preferredTop, preferredLeft) {
+  function floatingMetrics(element) {
     show(element, true);
-    const width = element.offsetWidth;
-    const height = element.offsetHeight;
-    const left = Math.max(8, Math.min(win.innerWidth - width - 8, preferredLeft));
-    const top = Math.max(8, Math.min(win.innerHeight - height - 8, preferredTop));
+    const scale = normalizeEditorUiScale(win.frameElement?.dataset.deckflowScale);
+    const inverseScale = 1 / scale;
+    const visibleViewportWidth = win.innerWidth * scale;
+    element.style.maxWidth = `${Math.max(96, visibleViewportWidth - 16)}px`;
+    element.style.transformOrigin = "top left";
+    element.style.transform = scale === 1 ? "" : `scale(${inverseScale})`;
+    return {
+      scale,
+      width: element.offsetWidth * inverseScale,
+      height: element.offsetHeight * inverseScale,
+      gap: 10 * inverseScale,
+      margin: 8 * inverseScale,
+    };
+  }
+
+  function placeBelowEnd(element, anchorRect) {
+    const metrics = floatingMetrics(element);
+    const preferredLeft = anchorRect.right - metrics.width;
+    const preferredTop = anchorRect.bottom + 8 / metrics.scale;
+    const left = Math.max(
+      metrics.margin,
+      Math.min(win.innerWidth - metrics.width - metrics.margin, preferredLeft),
+    );
+    const top = Math.max(
+      metrics.margin,
+      Math.min(win.innerHeight - metrics.height - metrics.margin, preferredTop),
+    );
     element.style.left = `${left}px`;
     element.style.top = `${top}px`;
   }
 
   function placeNear(element, anchorRect, align) {
-    show(element, true);
+    const metrics = floatingMetrics(element);
     const position = floatingPosition({
       anchorRect,
-      popupWidth: element.offsetWidth,
-      popupHeight: element.offsetHeight,
+      popupWidth: metrics.width,
+      popupHeight: metrics.height,
       viewportWidth: win.innerWidth,
       viewportHeight: win.innerHeight,
       align,
+      gap: metrics.gap,
+      margin: metrics.margin,
     });
     element.style.left = `${position.left}px`;
     element.style.top = `${position.top}px`;
@@ -666,7 +692,7 @@ export function createCanvasTextEditor({
 
     if (spacingOpen) {
       const toolRect = root.querySelector('[data-tool="spacing"]').getBoundingClientRect();
-      placeFloating(spacing, toolRect.bottom + 8, toolRect.right - spacing.offsetWidth);
+      placeBelowEnd(spacing, toolRect);
     }
   }
 

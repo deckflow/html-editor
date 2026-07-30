@@ -9,6 +9,8 @@ import type {
 export interface MountedHtmlEditor extends HtmlEditor {
   readonly element: HTMLDivElement;
   readonly iframe: HTMLIFrameElement;
+  readonly scaleToFit: boolean;
+  setScaleToFit(enabled: boolean): boolean;
 }
 
 export interface MountHtmlEditorOptions {
@@ -18,6 +20,8 @@ export interface MountHtmlEditorOptions {
   allowScripts?: boolean;
   readonly?: boolean;
   fit?: HtmlEditorFitMode | boolean;
+  scaleToFit?: boolean;
+  showScaleToggle?: boolean;
   historyLimit?: number;
   className?: string;
   title?: string;

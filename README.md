@@ -110,7 +110,8 @@ const editor = mountHtmlEditor({
   html: initialHtml,
   baseUrl: "https://example.com/project/",
   readonly: false,
-  fit: "width",
+  scaleToFit: true,
+  showScaleToggle: true,
 
   async onChange({ html, patches, revision, reason }) {
     await saveHtml({ html, patches, revision, reason });
@@ -125,6 +126,7 @@ await editor.ready;
 editor.getHtml();
 editor.setHtml(nextHtml);
 editor.setReadonly(true);
+editor.setScaleToFit(false);
 editor.setFitMode("contain");
 editor.refreshFit();
 editor.undo();
@@ -163,6 +165,14 @@ resizes, committed edits, resource loads, and non-editor DOM changes.
 `editor.setFitMode(mode)` changes the behavior at runtime, while
 `editor.refreshFit()` lets a host request an immediate recalculation after an
 external layout change. The current ratio is available as `editor.scale`.
+
+For a simple two-state UI, use `scaleToFit: true | false`. `true` is shorthand
+for `fit: "width"`. `false` preserves the authored fixed size, expands the
+iframe to that size, and makes the mounted preview container scroll. The mode
+can be changed later with `editor.setScaleToFit(enabled)`. When both
+`scaleToFit` and `fit` are supplied, `scaleToFit` takes precedence.
+The default UI shows a compact `Fit` switch; set `showScaleToggle: false` when
+the host application provides its own control.
 
 The lower-level runtime is available when a host supplies its own iframe and UI:
 

@@ -681,6 +681,73 @@ h1 {
   color: #8e5612;
 }
 
+.preview-toolbar-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-fit-control {
+  height: 30px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #59636b;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+
+.preview-fit-control:hover {
+  border-color: #cfd5da;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.preview-fit-control input {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  margin: 0;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  outline: none;
+  background: #9ca3af;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.preview-fit-control input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(25, 30, 35, 0.28);
+  transition: transform 140ms ease;
+}
+
+.preview-fit-control input:checked {
+  background: var(--accent);
+}
+
+.preview-fit-control input:checked::after {
+  transform: translateX(12px);
+}
+
+.preview-fit-control input:focus-visible {
+  box-shadow: 0 0 0 3px rgba(13, 123, 110, 0.18);
+}
+
 .icon-button {
   border-color: transparent;
   background: transparent;

@@ -6,6 +6,7 @@ import {
   normalizeFitMode,
 } from "../src/editor/fit.js";
 import {
+  calculateIframeOriginalSize,
   calculateIframeFitScale,
   isIframeFitRuntimeAttribute,
   normalizeIframeFitMode,
@@ -73,6 +74,27 @@ test("standalone iframe fit uses the same mode and scale contract", () => {
     contentWidth: 1280,
     contentHeight: 720,
   }), 0.5);
+});
+
+test("standalone original mode expands to fixed content and keeps the host minimum", () => {
+  assert.deepEqual(calculateIframeOriginalSize({
+    availableWidth: 607,
+    availableHeight: 700,
+    contentWidth: 1920,
+    contentHeight: 1080,
+  }), {
+    width: 1920,
+    height: 1080,
+  });
+  assert.deepEqual(calculateIframeOriginalSize({
+    availableWidth: 1200,
+    availableHeight: 800,
+    contentWidth: 900,
+    contentHeight: 600,
+  }), {
+    width: 1200,
+    height: 800,
+  });
 });
 
 test("standalone fit ignores attributes owned by the editor runtime", () => {

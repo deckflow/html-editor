@@ -31,6 +31,8 @@ function assertPublicApiTypes(
     html: "<h1>Hello</h1>",
     readonly: true,
     fit: "width",
+    scaleToFit: true,
+    showScaleToggle: true,
     onChange({ html, patches: nextPatches, revision, reason }) {
       html.toUpperCase();
       nextPatches.length;
@@ -43,6 +45,8 @@ function assertPublicApiTypes(
   mounted.setReadonly(false);
   mounted.readonly;
   mounted.setFitMode("contain");
+  mounted.setScaleToFit(false);
+  mounted.scaleToFit;
   mounted.refreshFit();
   mounted.scale;
   mounted.destroy();

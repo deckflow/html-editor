@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 
 const math = await import("../public/canvasEditorMath.js").catch(() => ({}));
 
+test("floating UI scale accepts a positive iframe scale and rejects invalid values", () => {
+  assert.equal(math.normalizeEditorUiScale(0.35), 0.35);
+  assert.equal(math.normalizeEditorUiScale("0.5"), 0.5);
+  assert.equal(math.normalizeEditorUiScale(0), 1);
+  assert.equal(math.normalizeEditorUiScale("invalid"), 1);
+});
+
 test("right resize changes width without moving the left edge", () => {
   assert.equal(typeof math.resizeFromHandle, "function");
   assert.deepEqual(

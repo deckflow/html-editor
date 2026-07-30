@@ -14,11 +14,11 @@ import {
   shouldCommitInlineEdit,
   shouldEnsureFixedWidthWrap,
 } from "./inlineEdit.js?v=editor-interactions-v4";
-import { createCanvasTextEditor } from "./canvasTextEditor.js?v=editor-interactions-v5";
+import { createCanvasTextEditor } from "./canvasTextEditor.js?v=editor-interactions-v6";
 import { createAutoSaveController } from "./autoSaveController.js";
 import { positionStart } from "./canvasEditorMath.js";
 import { createEditorHistory } from "./editorHistory.js";
-import { createIframeFitController } from "./iframeFit.js?v=iframe-fit-v2";
+import { createIframeFitController } from "./iframeFit.js?v=iframe-fit-v3";
 import { appendStructuralPatch, appendStylePatch } from "./patchQueue.js";
 import { dragTargetAtPoint } from "./pointerIntent.js?v=editor-interactions-v4";
 import { activateEmbeddedPreview } from "./previewLifecycle.js";
@@ -84,6 +84,8 @@ const els = {
   fileList: document.querySelector("#fileList"),
   fileListEmpty: document.querySelector("#fileListEmpty"),
   toggleFilesBtn: document.querySelector("#toggleFilesBtn"),
+  previewFitControl: document.querySelector("#previewFitControl"),
+  previewFitToggle: document.querySelector("#previewFitToggle"),
   reloadBtn: document.querySelector("#reloadBtn"),
   previewViewport: document.querySelector("#previewViewport"),
   preview: document.querySelector("#preview"),
@@ -102,12 +104,28 @@ const els = {
   nudgeButtons: document.querySelectorAll("[data-nudge]"),
 };
 
-// Standalone 模式默认按宽度缩放预览。它只改变 iframe 的外部尺寸和
-// transform，不会向用户 HTML 注入样式，也不会参与局部 patch 保存。
+// Standalone 默认按宽度缩放；关闭 Fit 后 iframe 按内容原始尺寸展开，
+// 滚动只发生在 previewViewport。两种模式都不会改写用户 HTML。
 const previewFit = createIframeFitController({
   iframe: els.preview,
   mode: "width",
+  expandOriginal: true,
+  onFitChange({ mode }) {
+    syncPreviewFitControl(mode);
+    state.canvasEditor?.refresh();
+  },
 });
+
+function syncPreviewFitControl(mode = previewFit.mode) {
+  const fitted = mode !== "none";
+  els.previewFitToggle.checked = fitted;
+  els.previewFitControl.title = fitted
+    ? "Keep the original size"
+    : "Scale preview to fit";
+  els.previewViewport.dataset.fit = mode;
+}
+
+syncPreviewFitControl();
 
 // 注入到 iframe 内部的辅助样式。节点引用和原属性值会被精确恢复，
 // 不依赖固定 id/全局 selector 清理，避免碰到用户同名标记。
@@ -1366,6 +1384,10 @@ els.reloadBtn.addEventListener("click", async () => {
   } catch (error) {
     setStatus(error.message, "error");
   }
+});
+
+els.previewFitToggle.addEventListener("change", () => {
+  previewFit.setMode(els.previewFitToggle.checked ? "width" : "none");
 });
 
 els.clearBtn.addEventListener("click", clearSelection);

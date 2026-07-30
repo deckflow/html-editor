@@ -36,6 +36,11 @@ export function floatingPosition({
   };
 }
 
+export function normalizeEditorUiScale(value) {
+  const scale = Number(value);
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
 export function resizeFromHandle({
   side,
   startWidth,
