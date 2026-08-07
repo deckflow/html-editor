@@ -111,6 +111,16 @@ export function mountHtmlEditor({
   const scaleToggleLabel = document.createElement("span");
   scaleToggleLabel.textContent = "Fit";
 
+  const scaleToggleTrack = document.createElement("span");
+  scaleToggleTrack.style.cssText = [
+    "position:relative",
+    "display:block",
+    "flex:0 0 28px",
+    "width:28px",
+    "height:16px",
+    "box-sizing:border-box",
+  ].join(";");
+
   const scaleToggleInput = document.createElement("input");
   scaleToggleInput.type = "checkbox";
   scaleToggleInput.checked = mountedFitMode !== "none";
@@ -118,10 +128,12 @@ export function mountHtmlEditor({
   scaleToggleInput.style.cssText = [
     "appearance:none",
     "-webkit-appearance:none",
-    "position:relative",
+    "position:absolute",
+    "inset:0",
     "width:28px",
     "height:16px",
     "margin:0",
+    "box-sizing:border-box",
     "border:0",
     "border-radius:999px",
     `background:${scaleToggleInput.checked ? "#0f766e" : "#9ca3af"}`,
@@ -134,18 +146,20 @@ export function mountHtmlEditor({
   scaleToggleThumb.style.cssText = [
     "position:absolute",
     "pointer-events:none",
-    "top:8px",
-    `right:${scaleToggleInput.checked ? "11px" : "23px"}`,
+    "top:2px",
+    "left:2px",
     "width:12px",
     "height:12px",
+    "box-sizing:border-box",
     "border-radius:50%",
     "background:#fff",
     "box-shadow:0 1px 3px rgba(15,23,42,.28)",
-    "transform:translateY(-50%)",
-    "transition:right 140ms ease",
+    `transform:translateX(${scaleToggleInput.checked ? "12px" : "0"})`,
+    "transition:transform 140ms ease",
   ].join(";");
 
-  scaleToggle.append(scaleToggleLabel, scaleToggleInput, scaleToggleThumb);
+  scaleToggleTrack.append(scaleToggleInput, scaleToggleThumb);
+  scaleToggle.append(scaleToggleLabel, scaleToggleTrack);
   if (showScaleToggle) root.append(scaleToggle);
   container.append(root);
 
@@ -197,7 +211,7 @@ export function mountHtmlEditor({
     const enabled = mountedFitMode !== "none";
     scaleToggleInput.checked = enabled;
     scaleToggleInput.style.background = enabled ? "#0f766e" : "#9ca3af";
-    scaleToggleThumb.style.right = enabled ? "11px" : "23px";
+    scaleToggleThumb.style.transform = `translateX(${enabled ? "12px" : "0"})`;
     scaleToggle.title = enabled
       ? "Keep the original size"
       : "Scale the preview to fit";
