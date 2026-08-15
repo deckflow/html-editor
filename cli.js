@@ -1,17 +1,25 @@
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, resolve } from "node:path";
 
 import { createStandaloneEditorServer } from "./src/standalone/index.js";
 
+export const HTML_EDITOR_VERSION = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+).version;
+
 export function parseCliArgs(argv) {
-  const result = { help: false, input: null, open: true, port: 0, root: null };
+  const result = { help: false, version: false, input: null, open: true, port: 0, root: null };
   let hasInput = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "--help" || value === "-h") {
       result.help = true;
+      continue;
+    }
+    if (value === "--version" || value === "-v") {
+      result.version = true;
       continue;
     }
     if (value === "--no-open") {
@@ -68,12 +76,18 @@ export function printHelp(log = console.log) {
 
 Usage:
   htmleditor <file.html|directory> [options]
+  htmleditor --version
 
 Options:
   --port <number>  Preferred port; 0 selects an available port (default: 0)
   --root <path>     Project/resource root; may be a parent of the HTML file
   --no-open        Do not open the browser automatically
+  -v, --version    Print the installed version and exit
   -h, --help       Show this help`);
+}
+
+export function printVersion(log = console.log) {
+  log(HTML_EDITOR_VERSION);
 }
 
 function openBrowser(url) {
@@ -91,6 +105,10 @@ export async function runCli(argv = process.argv.slice(2)) {
   const options = parseCliArgs(argv);
   if (options.help) {
     printHelp();
+    return null;
+  }
+  if (options.version) {
+    printVersion();
     return null;
   }
 

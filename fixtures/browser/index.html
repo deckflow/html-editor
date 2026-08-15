@@ -3,12 +3,17 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Embedded editor browser test</title>
+    <title>Deckflow · Embedded editor lab</title>
     <style>
-      body { margin: 0; display: grid; grid-template-columns: 1fr 1fr; height: 100vh; }
+      :root { color-scheme: light; font-family: "SF Pro Text", "Avenir Next", Avenir, sans-serif; }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 8px; gap: 8px; display: grid; grid-template-columns: 1fr 1fr; height: 100vh; background: #efefec; }
       body.is-narrow { grid-template-columns: 320px 1fr; }
-      .host { min-width: 0; min-height: 0; border-right: 1px solid #d8dee4; }
-      .test-controls { position: fixed; right: 12px; bottom: 12px; z-index: 10; }
+      .host { min-width: 0; min-height: 0; overflow: hidden; border: 1px solid #deded9; border-radius: 11px; background: #fff; box-shadow: 0 1px 2px rgba(28,28,25,.05); }
+      .test-controls { position: fixed; right: 20px; bottom: 20px; z-index: 10; display: flex; gap: 3px; padding: 5px; border: 1px solid rgba(255,255,255,.11); border-radius: 10px; background: rgba(31,31,29,.97); box-shadow: 0 18px 48px rgba(22,22,19,.25); backdrop-filter: blur(16px); }
+      .test-controls button { height: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d8d8d3; font: 650 10px/1 inherit; cursor: pointer; }
+      .test-controls button:hover { background: rgba(255,255,255,.11); color: #fff; }
+      .test-controls button:focus-visible { outline: 2px solid #8b9dff; outline-offset: 1px; }
     </style>
   </head>
   <body>

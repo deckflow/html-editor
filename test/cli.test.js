@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
-import { parseCliArgs, validateEditorInput } from "../cli.js";
+import { HTML_EDITOR_VERSION, parseCliArgs, validateEditorInput } from "../cli.js";
 
 test("CLI accepts a project path, resource root, and startup options", () => {
   assert.deepEqual(parseCliArgs(["./site/pages/index.html", "--root", "./site", "--port", "4567", "--no-open"]), {
     help: false,
+    version: false,
     input: "./site/pages/index.html",
     open: false,
     port: 4567,
@@ -19,11 +21,26 @@ test("CLI accepts a project path, resource root, and startup options", () => {
 test("CLI requires an explicit input and defaults to an automatic port", () => {
   assert.deepEqual(parseCliArgs([]), {
     help: false,
+    version: false,
     input: null,
     open: true,
     port: 0,
     root: null,
   });
+});
+
+test("CLI prints the package version without requiring an input path", () => {
+  assert.equal(parseCliArgs(["--version"]).version, true);
+  assert.equal(parseCliArgs(["-v"]).version, true);
+
+  const result = spawnSync(process.execPath, ["bin/htmleditor.js", "--version"], {
+    cwd: resolve("."),
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+  assert.equal(result.stdout.trim(), HTML_EDITOR_VERSION);
 });
 
 test("CLI accepts an existing .html file", () => {

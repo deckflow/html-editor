@@ -207,11 +207,24 @@ export function resolveProjectInput(input = ".", { projectRoot = null } = {}) {
  * the parent of new files are resolved through realpath so symlinks cannot
  * redirect reads or writes outside the selected project.
  */
-export function createProjectContext(projectDir, { htmlDirectory = projectDir } = {}) {
+export function createProjectContext(
+  projectDir,
+  { htmlDirectory = projectDir, excludedHtmlFiles = [] } = {},
+) {
   const root = realpathSync(resolve(projectDir));
   const htmlRoot = realpathSync(resolve(htmlDirectory));
   if (!isInsideRoot(root, htmlRoot) || !statSync(htmlRoot).isDirectory()) {
     throw new Error(`HTML directory must be inside the selected project root: ${root}`);
+  }
+
+  const excludedHtmlPaths = new Set();
+  for (const filePath of excludedHtmlFiles) {
+    try {
+      const canonical = realpathSync(resolve(filePath));
+      if (statSync(canonical).isFile()) excludedHtmlPaths.add(canonical);
+    } catch {
+      // Missing exclusions do not change the project context.
+    }
   }
 
   function safeExistingFile(inputPath) {
@@ -228,7 +241,8 @@ export function createProjectContext(projectDir, { htmlDirectory = projectDir } 
   function safeHtmlPath(inputPath) {
     if (typeof inputPath !== "string" || !inputPath.trim() || !isHtmlFile(inputPath)) return null;
 
-    return safeExistingFile(inputPath);
+    const target = safeExistingFile(inputPath);
+    return target && !excludedHtmlPaths.has(target.abs) ? target : null;
   }
 
   // Preview assets may be CSS, fonts, images, scripts, or nested HTML. They are
@@ -244,9 +258,9 @@ export function createProjectContext(projectDir, { htmlDirectory = projectDir } 
   }
 
   function listHtmlFiles() {
-    return listProjectHtmlFiles(htmlRoot).map((file) => (
-      relative(root, join(htmlRoot, file)).replaceAll("\\", "/")
-    ));
+    return listProjectHtmlFiles(htmlRoot)
+      .map((file) => relative(root, join(htmlRoot, file)).replaceAll("\\", "/"))
+      .filter((file) => safeHtmlPath(file));
   }
 
   return { projectDir: root, htmlDirectory: htmlRoot, listHtmlFiles, safeAssetPath, safeHtmlPath };

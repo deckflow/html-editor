@@ -72,6 +72,13 @@ Show the built-in help:
 htmleditor --help
 ```
 
+Check the installed version:
+
+```bash
+htmleditor --version
+# Prints the installed package version.
+```
+
 ### CLI syntax
 
 ```text
@@ -83,6 +90,7 @@ htmleditor <file.html|directory> [options]
 | `--port <number>` | `0` | Preferred port. `0` selects an available port. |
 | `--root <path>` | inferred | Filesystem root used for local resources. It may be a parent of the selected HTML file. |
 | `--no-open` | off | Start the server without opening a browser. |
+| `-v`, `--version` | | Print the installed package version and exit. |
 | `-h`, `--help` | | Print help and exit. |
 
 Examples:

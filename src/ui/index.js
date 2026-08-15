@@ -53,8 +53,22 @@ export function mountHtmlEditor({
     "height:100%",
     "min-height:320px",
     "overflow:hidden",
-    "background:#fff",
+    "background:#f3f3f0",
+    "color:#20201e",
   ].join(";");
+
+  const chromeStyle = document.createElement("style");
+  chromeStyle.textContent = `
+    .deckflow-html-editor__scale-toggle:hover {
+      border-color: #c8c8c1 !important;
+      background: rgba(255,255,255,.99) !important;
+      box-shadow: 0 10px 28px rgba(36,36,31,.14), 0 2px 6px rgba(36,36,31,.08) !important;
+    }
+    .deckflow-html-editor__scale-toggle:focus-within {
+      box-shadow: 0 0 0 3px rgba(77,107,254,.16), 0 8px 24px rgba(36,36,31,.12) !important;
+    }
+    .deckflow-html-editor__scale-toggle input:focus-visible { outline: none; }
+  `;
 
   const viewport = document.createElement("div");
   viewport.className = "deckflow-html-editor__viewport";
@@ -81,7 +95,7 @@ export function mountHtmlEditor({
     "background:#fff",
   ].join(";");
   viewport.append(iframe);
-  root.append(viewport);
+  root.append(chromeStyle, viewport);
 
   const scaleToggle = document.createElement("label");
   scaleToggle.className = "deckflow-html-editor__scale-toggle";
@@ -94,18 +108,19 @@ export function mountHtmlEditor({
     "display:flex",
     "align-items:center",
     "gap:8px",
-    "height:32px",
-    "padding:0 9px",
-    "border:1px solid rgba(15,23,42,.16)",
-    "border-radius:6px",
-    "background:rgba(255,255,255,.94)",
-    "box-shadow:0 4px 14px rgba(15,23,42,.12)",
-    "color:#1f2937",
-    "font:600 12px/1 system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    "height:34px",
+    "padding:0 10px",
+    "border:1px solid #deded9",
+    "border-radius:9px",
+    "background:rgba(255,255,255,.96)",
+    "box-shadow:0 8px 24px rgba(36,36,31,.11),0 1px 3px rgba(36,36,31,.08)",
+    "color:#464641",
+    "font:650 11px/1 'SF Pro Text','Avenir Next',Avenir,'Helvetica Neue',sans-serif",
     "cursor:pointer",
     "user-select:none",
     "-webkit-user-select:none",
-    "backdrop-filter:blur(8px)",
+    "backdrop-filter:blur(16px) saturate(1.15)",
+    "transition:border-color 130ms ease,background 130ms ease,box-shadow 130ms ease",
   ].join(";");
 
   const scaleToggleLabel = document.createElement("span");
@@ -136,7 +151,7 @@ export function mountHtmlEditor({
     "box-sizing:border-box",
     "border:0",
     "border-radius:999px",
-    `background:${scaleToggleInput.checked ? "#0f766e" : "#9ca3af"}`,
+    `background:${scaleToggleInput.checked ? "#292927" : "#b6b6af"}`,
     "cursor:pointer",
     "transition:background 140ms ease",
   ].join(";");
@@ -153,7 +168,7 @@ export function mountHtmlEditor({
     "box-sizing:border-box",
     "border-radius:50%",
     "background:#fff",
-    "box-shadow:0 1px 3px rgba(15,23,42,.28)",
+    "box-shadow:0 1px 3px rgba(25,25,22,.28)",
     `transform:translateX(${scaleToggleInput.checked ? "12px" : "0"})`,
     "transition:transform 140ms ease",
   ].join(";");
@@ -210,7 +225,7 @@ export function mountHtmlEditor({
   function syncScaleToggle() {
     const enabled = mountedFitMode !== "none";
     scaleToggleInput.checked = enabled;
-    scaleToggleInput.style.background = enabled ? "#0f766e" : "#9ca3af";
+    scaleToggleInput.style.background = enabled ? "#292927" : "#b6b6af";
     scaleToggleThumb.style.transform = `translateX(${enabled ? "12px" : "0"})`;
     scaleToggle.title = enabled
       ? "Keep the original size"

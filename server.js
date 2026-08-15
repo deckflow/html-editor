@@ -156,8 +156,15 @@ async function createServerInstance({
       : inferProjectRootForHtml(startupInput);
   }
   const resolvedInput = resolveProjectInput(input, { projectRoot: startupRoot });
+  const editorUiHtmlFiles = serveEditorUi
+    ? [
+        join(publicDir, "index.html"),
+        join(packageDir, "fixtures", "browser", "index.html"),
+      ]
+    : [];
   let project = createProjectContext(resolvedInput.projectDir, {
     htmlDirectory: startupIsDirectory ? resolve(startupInput) : resolvedInput.projectDir,
+    excludedHtmlFiles: editorUiHtmlFiles,
   });
   let projectDir = project.projectDir;
   let defaultFile = resolvedInput.defaultFile.replaceAll("\\", "/");
@@ -187,6 +194,7 @@ async function createServerInstance({
     watcher?.close();
     project = createProjectContext(selected.projectDir, {
       htmlDirectory: kind === "directory" ? normalized : selected.projectDir,
+      excludedHtmlFiles: editorUiHtmlFiles,
     });
     projectDir = project.projectDir;
     defaultFile = selected.defaultFile.replaceAll("\\", "/");

@@ -41,6 +41,8 @@ import {
 // state 保存编辑器运行时状态；真正的 HTML 内容仍然在 iframe 文档里。
 const state = {
   currentPath: "",
+  projectName: "Local project",
+  localProjectName: "Local project",
   mode: "local",
   source: "",
   previewBaseHref: "",
@@ -91,6 +93,10 @@ const els = {
   preview: document.querySelector("#preview"),
   previewStatus: document.querySelector("#previewStatus"),
   status: document.querySelector("#status"),
+  currentFileName: document.querySelector("#currentFileName"),
+  currentFilePath: document.querySelector("#currentFilePath"),
+  openShortcut: document.querySelector(".button-shortcut"),
+  searchShortcut: document.querySelector(".file-search kbd"),
   selectionName: document.querySelector("#selectionName"),
   selectorText: document.querySelector("#selectorText"),
   textValue: document.querySelector("#textValue"),
@@ -103,6 +109,21 @@ const els = {
   clearBtn: document.querySelector("#clearBtn"),
   nudgeButtons: document.querySelectorAll("[data-nudge]"),
 };
+
+const shortcutModifier = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl ";
+els.openShortcut.textContent = `${shortcutModifier}O`;
+els.searchShortcut.textContent = `${shortcutModifier}K`;
+
+function syncCurrentDocument(path = state.currentPath) {
+  const normalized = String(path || "Untitled document").replaceAll("\\", "/");
+  const parts = normalized.split("/").filter(Boolean);
+  const fileName = parts.pop() || normalized;
+  els.currentFileName.textContent = fileName;
+  els.currentFilePath.textContent = parts.length
+    ? `${state.projectName} / ${parts.join(" / ")}`
+    : state.projectName;
+  document.title = `${fileName} · Deckflow HTML Editor`;
+}
 
 // Standalone 默认按宽度缩放；关闭 Fit 后 iframe 按内容原始尺寸展开，
 // 滚动只发生在 previewViewport。两种模式都不会改写用户 HTML。
@@ -1100,6 +1121,8 @@ async function loadFile(path = state.currentPath) {
   state.source = payload.content;
   state.mode = "local";
   state.currentPath = payload.path;
+  state.projectName = state.localProjectName;
+  syncCurrentDocument(payload.path);
   state.previewBaseHref = payload.previewBase || "";
   state.browserFileHandle = null;
   state.browserFile = null;
@@ -1147,6 +1170,8 @@ async function loadBrowserHtmlFile(file, handle = null) {
   clearSelection();
 
   state.currentPath = file.name;
+  state.projectName = "Local file";
+  syncCurrentDocument(file.name);
   state.source = content;
   state.mode = "browser-file";
   state.previewBaseHref = "";
@@ -1278,7 +1303,19 @@ els.toggleFilesBtn.addEventListener("click", () => {
   els.toggleFilesBtn.title = collapsed ? "Show HTML files" : "Hide HTML files";
   els.toggleFilesBtn.setAttribute("aria-label", els.toggleFilesBtn.title);
   els.toggleFilesBtn.setAttribute("aria-expanded", String(!collapsed));
+  try {
+    localStorage.setItem("deckflow:files-collapsed", String(collapsed));
+  } catch {}
 });
+
+try {
+  if (localStorage.getItem("deckflow:files-collapsed") === "true") {
+    els.workspace.classList.add("files-collapsed");
+    els.toggleFilesBtn.title = "Show HTML files";
+    els.toggleFilesBtn.setAttribute("aria-label", els.toggleFilesBtn.title);
+    els.toggleFilesBtn.setAttribute("aria-expanded", "false");
+  }
+} catch {}
 
 function setOpenPickerMenu(open) {
   els.openPickerMenu.hidden = !open;
@@ -1353,6 +1390,36 @@ document.addEventListener("keydown", (event) => {
     event.stopPropagation();
     setOpenPickerMenu(false);
     els.chooseFileBtn.focus();
+    return;
+  }
+
+  const modifier = event.metaKey || event.ctrlKey;
+  const key = event.key.toLowerCase();
+  if (modifier && key === "o") {
+    event.preventDefault();
+    setOpenPickerMenu(true);
+    els.openPickerItems[0]?.focus();
+    return;
+  }
+  if (modifier && key === "k") {
+    event.preventDefault();
+    if (els.workspace.classList.contains("files-collapsed")) {
+      els.workspace.classList.remove("files-collapsed");
+      els.toggleFilesBtn.title = "Hide HTML files";
+      els.toggleFilesBtn.setAttribute("aria-label", els.toggleFilesBtn.title);
+      els.toggleFilesBtn.setAttribute("aria-expanded", "true");
+      try {
+        localStorage.setItem("deckflow:files-collapsed", "false");
+      } catch {}
+    }
+    els.fileSearch.focus();
+    els.fileSearch.select();
+    return;
+  }
+  if (!els.openPickerMenu.hidden && !modifier && (key === "f" || key === "d")) {
+    event.preventDefault();
+    const kind = key === "f" ? "file" : "directory";
+    els.openPickerItems.find((item) => item.dataset.openKind === kind)?.click();
   }
 });
 els.htmlFileInput.addEventListener("change", async () => {
@@ -1496,7 +1563,10 @@ async function bootstrapProject() {
   const response = await fetch("/api/project");
   const project = await response.json();
   if (!response.ok || !project.ok) throw new Error(project.error || "Failed to load project");
+  state.projectName = project.name || "Local project";
+  state.localProjectName = state.projectName;
   state.currentPath = project.defaultFile;
+  syncCurrentDocument(project.defaultFile);
   await loadFile(project.defaultFile);
   if (project.watch) connectProjectEvents();
 }

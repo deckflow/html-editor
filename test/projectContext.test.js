@@ -63,6 +63,16 @@ test("HTML listing is recursive, flat, sorted, and skips ignored directories", (
   assert.deepEqual(listProjectHtmlFiles(root), ["index.html", "pages/about.html"]);
 });
 
+test("project context excludes only explicitly identified editor HTML files", () => {
+  const root = createFixture();
+  const editorShell = join(root, "pages", "about.html");
+  const project = createProjectContext(root, { excludedHtmlFiles: [editorShell] });
+
+  assert.deepEqual(project.listHtmlFiles(), ["index.html"]);
+  assert.equal(project.safeHtmlPath("pages/about.html"), null);
+  assert.equal(project.safeHtmlPath("index.html")?.rel, "index.html");
+});
+
 test("an explicit project root may be a parent of the selected HTML", () => {
   const root = createFixture();
   const result = resolveProjectInput(join(root, "pages", "about.html"), { projectRoot: root });

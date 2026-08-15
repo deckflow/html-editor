@@ -24,13 +24,14 @@ import {
   toggleFontWeight,
 } from "./canvasEditorMath.js";
 
-const BLUE = "#4f6ff5";
+const BLUE = "#4d6bfe";
 
 const overlayStyles = `
   [data-local-editor-ui] {
     box-sizing: border-box;
-    font-family: "Avenir Next", Avenir, "Helvetica Neue", Helvetica, sans-serif;
+    font-family: "SF Pro Text", "Avenir Next", Avenir, "Helvetica Neue", sans-serif;
     letter-spacing: 0;
+    -webkit-font-smoothing: antialiased;
   }
 
   [data-local-editor-ui],
@@ -50,7 +51,7 @@ const overlayStyles = `
     z-index: 1;
     display: none;
     border: 1.5px solid ${BLUE};
-    box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.72);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.82), 0 0 0 3px rgba(77, 107, 254, 0.08);
     pointer-events: none;
   }
 
@@ -58,7 +59,7 @@ const overlayStyles = `
     position: fixed;
     z-index: 0;
     display: none;
-    background: rgba(255, 49, 190, 0.9);
+    background: rgba(224, 54, 143, 0.88);
     box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.72);
     pointer-events: none;
   }
@@ -79,7 +80,7 @@ const overlayStyles = `
     position: absolute;
     border: 1.5px solid ${BLUE};
     background: #fff;
-    box-shadow: 0 2px 5px rgba(21, 25, 30, 0.18);
+    box-shadow: 0 2px 6px rgba(30, 30, 27, 0.2);
     pointer-events: auto;
     touch-action: none;
     z-index: 3;
@@ -90,7 +91,7 @@ const overlayStyles = `
     top: 50%;
     width: 9px;
     height: 24px;
-    border-radius: 4px;
+    border-radius: 5px;
     cursor: ew-resize;
     transform: translateY(-50%);
   }
@@ -103,7 +104,7 @@ const overlayStyles = `
     top: -8px;
     width: 20px;
     height: 9px;
-    border-radius: 4px;
+    border-radius: 5px;
     background: ${BLUE};
     cursor: move;
     transform: translateX(-50%);
@@ -130,19 +131,19 @@ const overlayStyles = `
     z-index: 2;
     display: none;
     align-items: center;
-    color: #d6dce0;
-    background: rgba(23, 26, 29, 0.98);
-    border: 1px solid #343a40;
-    border-radius: 7px;
-    box-shadow: 0 16px 40px rgba(10, 13, 16, 0.28), 0 2px 8px rgba(10, 13, 16, 0.18);
-    backdrop-filter: blur(12px);
+    color: #d8d8d3;
+    background: rgba(31, 31, 29, 0.97);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(22, 22, 19, 0.26), 0 2px 8px rgba(22, 22, 19, 0.16);
+    backdrop-filter: blur(18px) saturate(1.15);
     pointer-events: auto;
   }
 
   .local-editor-toolbar {
     max-width: calc(100vw - 16px);
-    min-height: 44px;
-    padding: 5px 6px;
+    min-height: 46px;
+    padding: 6px;
     gap: 2px;
     overflow-x: auto;
     scrollbar-width: none;
@@ -152,15 +153,15 @@ const overlayStyles = `
   .local-editor-toolbar::-webkit-scrollbar { display: none; }
 
   .local-editor-actions {
-    min-height: 40px;
-    padding: 4px;
+    min-height: 42px;
+    padding: 5px;
     gap: 1px;
   }
 
   .local-editor-table-actions {
     max-width: calc(100vw - 16px);
-    min-height: 40px;
-    padding: 4px;
+    min-height: 42px;
+    padding: 5px;
     gap: 1px;
     overflow-x: auto;
     scrollbar-width: none;
@@ -188,9 +189,9 @@ const overlayStyles = `
     min-height: 32px;
     padding: 0;
     border: 0;
-    border-radius: 5px;
+    border-radius: 7px;
     background: transparent;
-    color: #c2c9ce;
+    color: #c9c9c3;
     font-size: 16px;
     line-height: 1;
     cursor: pointer;
@@ -201,12 +202,12 @@ const overlayStyles = `
   .local-editor-table-action:hover,
   .local-editor-tool.is-active {
     color: #ffffff;
-    background: #343a40;
+    background: rgba(255, 255, 255, 0.11);
   }
 
   .local-editor-tool.is-active {
-    color: #b8c4ff;
-    background: rgba(79, 111, 245, 0.24);
+    color: #c9d0ff;
+    background: rgba(77, 107, 254, 0.28);
   }
 
   .local-editor-action[data-action="delete"]:hover {
@@ -230,7 +231,7 @@ const overlayStyles = `
 
   .local-editor-table-action:disabled,
   .local-editor-table-action:disabled:hover {
-    color: #626b72;
+    color: #6f6f69;
     background: transparent;
     cursor: not-allowed;
   }
@@ -253,10 +254,10 @@ const overlayStyles = `
     align-items: center;
     height: 32px;
     padding: 0 6px;
-    border: 1px solid #343a40;
-    border-radius: 5px;
-    background: #202428;
-    color: #859098;
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #94948d;
     font-size: 12px;
   }
 
@@ -267,7 +268,7 @@ const overlayStyles = `
     border: 0;
     outline: 0;
     background: transparent;
-    color: #f3f5f6;
+    color: #f5f5f2;
     font-size: 13px;
   }
 
@@ -275,7 +276,7 @@ const overlayStyles = `
     width: 1px;
     height: 22px;
     margin: 0 3px;
-    background: #3a4147;
+    background: rgba(255, 255, 255, 0.13);
   }
 
   .local-editor-color {
@@ -284,11 +285,11 @@ const overlayStyles = `
     place-items: center;
     width: 32px;
     height: 32px;
-    border-radius: 5px;
+    border-radius: 7px;
     cursor: pointer;
   }
 
-  .local-editor-color:hover { background: #343a40; }
+  .local-editor-color:hover { background: rgba(255, 255, 255, 0.11); }
 
   .local-editor-color span {
     font-size: 16px;
@@ -335,7 +336,7 @@ const overlayStyles = `
     align-items: center;
     justify-content: space-between;
     margin-bottom: 7px;
-    color: #b7c0c6;
+    color: #c0c0ba;
     font-size: 12px;
   }
 
@@ -343,10 +344,10 @@ const overlayStyles = `
     width: 56px;
     height: 28px;
     padding: 0 6px;
-    border: 1px solid #41484e;
-    border-radius: 5px;
-    background: #202428;
-    color: #f3f5f6;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.07);
+    color: #f5f5f2;
     text-align: right;
   }
 
